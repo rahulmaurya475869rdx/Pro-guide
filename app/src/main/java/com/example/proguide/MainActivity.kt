@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
         
         mapView.getMapAsync { map ->
             mapLibreMap = map
-            map.setStyle("https://demotiles.maplibre.org/style.json") { style ->
+            map.setStyle("https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json") { style ->
                 // Map load hone ke baad location check karein
                 checkLocationPermissionAndMoveCamera()
             }
