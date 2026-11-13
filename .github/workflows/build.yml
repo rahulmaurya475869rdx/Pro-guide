@@ -23,7 +23,7 @@ jobs:
       
     - name: Build with Gradle
       run: |
-        gradle wrapper --gradle-version 8.5
+        ./gradle wrapper --gradle-version 8.5
         ./gradlew assembleDebug
         
     - name: Upload APK
