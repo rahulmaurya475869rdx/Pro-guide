@@ -30,17 +30,17 @@ class MainActivity : AppCompatActivity() {
         
         mapView.getMapAsync { map ->
             mapLibreMap = map
-            // MapConfig se style utha kar lagana
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
-                LocationHelper.enableLocation(this, map, style)
-                LocationHelper.moveToCurrentLocation(this, map)
+                // Context fix: this@MainActivity use kiya hai
+                LocationHelper.enableLocation(this@MainActivity, map, style)
+                LocationHelper.moveToCurrentLocation(this@MainActivity, map)
             }
         }
 
         // My Location Button
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
-            mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this, it) }
+            mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
         // Layers Button
@@ -49,24 +49,24 @@ class MainActivity : AppCompatActivity() {
                 if (isSatelliteMode) {
                     map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                         currentStyle = style
-                        LocationHelper.enableLocation(this, map, style)
+                        LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
-                    Toast.makeText(this, "Default Mode", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Default Mode", Toast.LENGTH_SHORT).show()
                 } else {
                     map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
                         currentStyle = style
-                        LocationHelper.enableLocation(this, map, style)
+                        LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
-                    Toast.makeText(this, "Satellite Mode", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Satellite Mode", Toast.LENGTH_SHORT).show()
                 }
             }
         }
 
-        // Download Button (Abhi ke liye sirf message dikhayega)
+        // Download Button
         findViewById<FloatingActionButton>(R.id.btnDownload).setOnClickListener {
-            Toast.makeText(this, "Offline Download Feature Coming Soon!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, "Offline Download Feature Coming Soon!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -74,13 +74,13 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             mapLibreMap?.let { map ->
-                currentStyle?.let { style -> LocationHelper.enableLocation(this, map, style) }
-                LocationHelper.moveToCurrentLocation(this, map)
+                currentStyle?.let { style -> LocationHelper.enableLocation(this@MainActivity, map, style) }
+                LocationHelper.moveToCurrentLocation(this@MainActivity, map)
             }
         }
     }
 
-    // MapView Lifecycle
+    // MapView Lifecycle Methods
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { super.onPause(); mapView.onPause() }
