@@ -9,13 +9,15 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Transparent Status Indicators Panel (Top Left) -->
+    <!-- Status Indicators Panel (Top Left) -->
     <LinearLayout
         android:id="@+id/statusPanel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
         android:orientation="vertical"
+        android:background="#99000000" 
+        android:padding="10dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -41,11 +43,7 @@
                 android:text="Searching..."
                 android:textColor="#FFFFFF"
                 android:textSize="15sp"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowDx="2"
-                android:shadowDy="2"
-                android:shadowRadius="3" />
+                android:textStyle="bold" />
 
             <View
                 android:id="@+id/dotGps"
@@ -75,11 +73,7 @@
                 android:text="Offline"
                 android:textColor="#FFFFFF"
                 android:textSize="15sp"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowDx="2"
-                android:shadowDy="2"
-                android:shadowRadius="3" />
+                android:textStyle="bold" />
 
             <View
                 android:id="@+id/dotInternet"
@@ -89,7 +83,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Layers Button (Top Right) -->
+    <!-- Layers Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnLayers"
         android:layout_width="wrap_content"
@@ -102,7 +96,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Menu Button (3 Lines) - Layers ke theek neeche -->
+    <!-- Menu Button (3 Lines) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMenu"
         android:layout_width="wrap_content"
