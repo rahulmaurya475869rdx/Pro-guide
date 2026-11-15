@@ -1,6 +1,8 @@
 package com.example.proguide
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.offline.OfflineManager
@@ -28,36 +30,47 @@ object OfflineMapManager {
 
         val metadata = "My Downloaded Area".toByteArray()
 
+        // Background thread se UI update karne ke liye Handler
+        val mainHandler = Handler(Looper.getMainLooper())
+
         OfflineManager.getInstance(context).createOfflineRegion(
             definition,
             metadata,
             object : OfflineManager.CreateOfflineRegionCallback {
                 override fun onCreate(offlineRegion: OfflineRegion) {
                     offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
-                    Toast.makeText(context, "Download Shuru Ho Gaya! (Wait karein)", Toast.LENGTH_LONG).show()
+                    mainHandler.post {
+                        Toast.makeText(context, "Download Shuru Ho Gaya! (Wait karein)", Toast.LENGTH_LONG).show()
+                    }
 
                     offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
                         override fun onStatusChanged(status: OfflineRegionStatus) {
                             if (status.isComplete) {
-                                Toast.makeText(context, "Area Download Complete! Ab Offline Chalega.", Toast.LENGTH_LONG).show()
+                                mainHandler.post {
+                                    Toast.makeText(context, "Area Download Complete! Ab Offline Chalega.", Toast.LENGTH_LONG).show()
+                                }
                                 offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
                             }
                         }
 
                         override fun onError(error: OfflineRegionError) {
-                            Toast.makeText(context, "Download Error: ${error.message}", Toast.LENGTH_SHORT).show()
+                            mainHandler.post {
+                                Toast.makeText(context, "Download Error: ${error.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
 
-                        // Yahan sahi naam aur parameter hai
                         override fun mapboxTileCountLimitExceeded(limit: Long) {
-                            Toast.makeText(context, "Download Limit Exceeded! Limit: $limit", Toast.LENGTH_LONG).show()
-                            offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                            mainHandler.post {
+                                Toast.makeText(context, "Limit Exceeded! Limit: $limit", Toast.LENGTH_LONG).show()
+                            }
                         }
                     })
                 }
 
                 override fun onError(error: String) {
-                    Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+                    mainHandler.post {
+                        Toast.makeText(context, "Error: $error", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         )
