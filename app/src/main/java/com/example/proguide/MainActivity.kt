@@ -32,8 +32,8 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap = map
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
-                // Context fix: this@MainActivity use kiya hai
                 LocationHelper.enableLocation(this@MainActivity, map, style)
+                // Map khulte hi location par zoom karne ki koshish
                 LocationHelper.moveToCurrentLocation(this@MainActivity, map)
             }
         }
@@ -64,9 +64,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Download Button
+        // NAYA: Download Button (Ab asli download start karega)
         findViewById<FloatingActionButton>(R.id.btnDownload).setOnClickListener {
-            Toast.makeText(this@MainActivity, "Offline Download Feature Coming Soon!", Toast.LENGTH_SHORT).show()
+            mapLibreMap?.let { map ->
+                // Jo style screen par chal raha hai (Default ya Satellite), wahi download hoga
+                val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
+                OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
+            }
         }
     }
 
@@ -80,7 +84,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // MapView Lifecycle Methods
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { super.onPause(); mapView.onPause() }
