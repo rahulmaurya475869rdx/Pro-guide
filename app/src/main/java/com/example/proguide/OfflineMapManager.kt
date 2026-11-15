@@ -15,7 +15,6 @@ object OfflineMapManager {
         val visibleRegion = map.projection.visibleRegion ?: return
         val latLngBounds = visibleRegion.latLngBounds
 
-        // Zoom level 10 se 16 tak download karega (Gaon/Street level)
         val minZoom = 10.0
         val maxZoom = 16.0
 
@@ -44,10 +43,16 @@ object OfflineMapManager {
                                 offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
                             }
                         }
+
                         override fun onError(error: OfflineRegionError) {
                             Toast.makeText(context, "Download Error: ${error.message}", Toast.LENGTH_SHORT).show()
                         }
-                        override fun mapboxTileLimitExceeded() {}
+
+                        // Yahan sahi naam aur parameter hai
+                        override fun mapboxTileCountLimitExceeded(limit: Long) {
+                            Toast.makeText(context, "Download Limit Exceeded! Limit: $limit", Toast.LENGTH_LONG).show()
+                            offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                        }
                     })
                 }
 
