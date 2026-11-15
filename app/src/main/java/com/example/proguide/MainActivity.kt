@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -12,7 +13,8 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Looper
 import android.view.View
-import android.widget.LinearLayout
+import android.widget.PopupMenu
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -40,16 +42,12 @@ class MainActivity : AppCompatActivity() {
     
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     
-    // UI Elements
+    private lateinit var tvGpsStatus: TextView
+    private lateinit var tvNetStatus: TextView
     private lateinit var dotGps: View
     private lateinit var dotInternet: View
-    private lateinit var rowGps: LinearLayout
-    private lateinit var rowInternet: LinearLayout
     
-    // Status Variables
-    private var currentGpsStatus = "Searching..."
-    private var currentInternetStatus = "Offline"
-    private var isFirstLocationFix = true // Pehli baar map ko move karne ke liye
+    private var isFirstLocationFix = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,23 +56,18 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         mapView = findViewById(R.id.mapView)
+        tvGpsStatus = findViewById(R.id.tvGpsStatus)
+        tvNetStatus = findViewById(R.id.tvNetStatus)
         dotGps = findViewById(R.id.dotGps)
         dotInternet = findViewById(R.id.dotInternet)
-        rowGps = findViewById(R.id.rowGps)
-        rowInternet = findViewById(R.id.rowInternet)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mapView.onCreate(savedInstanceState)
 
-        // Click listeners for Status Popups
-        rowGps.setOnClickListener {
-            Toast.makeText(this, "GPS Status: $currentGpsStatus", Toast.LENGTH_SHORT).show()
-        }
-        rowInternet.setOnClickListener {
-            Toast.makeText(this, "Internet: $currentInternetStatus", Toast.LENGTH_SHORT).show()
-        }
+        // Initial Dot Setup (Red Circles)
+        setupCircleDot(dotGps, "#F44336")
+        setupCircleDot(dotInternet, "#F44336")
 
-        // Permission check
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
@@ -83,11 +76,12 @@ class MainActivity : AppCompatActivity() {
             monitorInternetConnection()
         }
 
-        // Buttons setup
+        // My Location Button
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
+        // Layers Button (Satellite/Default)
         findViewById<FloatingActionButton>(R.id.btnLayers).setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
@@ -96,24 +90,44 @@ class MainActivity : AppCompatActivity() {
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
-                    Toast.makeText(this@MainActivity, "Default Mode", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Default Mode", Toast.LENGTH_SHORT).show()
                 } else {
                     map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
                         currentStyle = style
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
-                    Toast.makeText(this@MainActivity, "Satellite Mode", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Satellite Mode", Toast.LENGTH_SHORT).show()
                 }
             }
         }
 
-        findViewById<FloatingActionButton>(R.id.btnDownload).setOnClickListener {
-            mapLibreMap?.let { map ->
-                val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
+        // NAYA: Menu Button (3 Lines) Logic
+        findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener { view ->
+            val popup = PopupMenu(this, view)
+            popup.menu.add(0, 1, 0, "Download Offline Map")
+            popup.setOnMenuItemClickListener { item ->
+                if (item.itemId == 1) {
+                    // Download Function Call
+                    mapLibreMap?.let { map ->
+                        val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
+                        OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
+                    }
+                    true
+                } else {
+                    false
+                }
             }
+            popup.show()
         }
+    }
+
+    // Dot ko Perfect Circle banane ka function
+    private fun setupCircleDot(view: View, colorHex: String) {
+        val drawable = GradientDrawable()
+        drawable.shape = GradientDrawable.OVAL
+        drawable.setColor(Color.parseColor(colorHex))
+        view.background = drawable
     }
 
     private fun setupMap() {
@@ -126,7 +140,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- GPS LIVE TRACKING & FILTERING ---
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
@@ -140,32 +153,27 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // 1. UPDATE STATUS COLORS & TEXT
                     when {
                         accuracy < 10.0 -> {
-                            currentGpsStatus = "Excellent (${accuracy.toInt()}m)"
-                            dotGps.setBackgroundColor(Color.parseColor("#4CAF50")) // Green
+                            tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
+                            setupCircleDot(dotGps, "#4CAF50") // Green
                         }
                         accuracy < 20.0 -> {
-                            currentGpsStatus = "Good (${accuracy.toInt()}m)"
-                            dotGps.setBackgroundColor(Color.parseColor("#2196F3")) // Blue
+                            tvGpsStatus.text = "Good (${accuracy.toInt()}m)"
+                            setupCircleDot(dotGps, "#2196F3") // Blue
                         }
                         accuracy < 50.0 -> {
-                            currentGpsStatus = "Average (${accuracy.toInt()}m)"
-                            dotGps.setBackgroundColor(Color.parseColor("#FFC107")) // Yellow
+                            tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"
+                            setupCircleDot(dotGps, "#FFC107") // Yellow
                         }
                         else -> {
-                            currentGpsStatus = "Weak (${accuracy.toInt()}m)"
-                            dotGps.setBackgroundColor(Color.parseColor("#F44336")) // Red
+                            tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"
+                            setupCircleDot(dotGps, "#F44336") // Red
                         }
                     }
 
-                    // 2. FILTER CACHED / TOWER LOCATION
-                    // Agar accuracy 30m se kharab hai, toh map ko mat hilao
                     if (accuracy <= 30.0) {
                         val userLoc = LatLng(location.latitude, location.longitude)
-                        
-                        // Pehli baar map ko move karo, uske baad user khud pan karega
                         if (isFirstLocationFix && mapLibreMap != null) {
                             val pos = CameraPosition.Builder()
                                 .target(userLoc)
@@ -181,10 +189,8 @@ class MainActivity : AppCompatActivity() {
         }, Looper.getMainLooper())
     }
 
-    // --- INTERNET MONITORING ---
     private fun monitorInternetConnection() {
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        
         val networkRequest = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
@@ -192,15 +198,14 @@ class MainActivity : AppCompatActivity() {
         connectivityManager.registerNetworkCallback(networkRequest, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 runOnUiThread {
-                    // Check type: WiFi or Mobile Data
                     val capabilities = connectivityManager.getNetworkCapabilities(network)
                     if (capabilities != null) {
                         if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                            currentInternetStatus = "WiFi"
-                            dotInternet.setBackgroundColor(Color.parseColor("#4CAF50")) // Green
+                            tvNetStatus.text = "WiFi"
+                            setupCircleDot(dotInternet, "#4CAF50")
                         } else {
-                            currentInternetStatus = "Mobile Data"
-                            dotInternet.setBackgroundColor(Color.parseColor("#2196F3")) // Blue
+                            tvNetStatus.text = "Data"
+                            setupCircleDot(dotInternet, "#2196F3")
                         }
                     }
                 }
@@ -208,18 +213,17 @@ class MainActivity : AppCompatActivity() {
 
             override fun onLost(network: Network) {
                 runOnUiThread {
-                    currentInternetStatus = "Offline"
-                    dotInternet.setBackgroundColor(Color.parseColor("#F44336")) // Red
+                    tvNetStatus.text = "Offline"
+                    setupCircleDot(dotInternet, "#F44336")
                 }
             }
         })
         
-        // Initial Check
         val activeNetwork = connectivityManager.activeNetwork
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
         if (capabilities == null) {
-            dotInternet.setBackgroundColor(Color.parseColor("#F44336"))
-            currentInternetStatus = "Offline"
+            setupCircleDot(dotInternet, "#F44336")
+            tvNetStatus.text = "Offline"
         }
     }
 
