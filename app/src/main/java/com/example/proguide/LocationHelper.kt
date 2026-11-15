@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -14,6 +13,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.LocationComponentOptions
+import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
@@ -37,6 +37,9 @@ object LocationHelper {
         locationComponent.activateLocationComponent(activationOptions)
         locationComponent.isLocationComponentEnabled = true
         locationComponent.renderMode = RenderMode.COMPASS
+        
+        // NAYA: Camera ko tracking mode mein daala (Google Maps jaisa follow karega)
+        locationComponent.cameraMode = CameraMode.TRACKING
     }
 
     @SuppressLint("MissingPermission")
@@ -48,13 +51,10 @@ object LocationHelper {
                 if (location != null) {
                     moveCamera(map, location.latitude, location.longitude)
                 } else {
-                    // Agar lastLocation null hai, toh naya location fetch karein
                     fusedLocationClient.getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null)
                         .addOnSuccessListener { currentLoc ->
                             if (currentLoc != null) {
                                 moveCamera(map, currentLoc.latitude, currentLoc.longitude)
-                            } else {
-                                Toast.makeText(context, "GPS signal dhoond rahe hain, thoda wait karein...", Toast.LENGTH_SHORT).show()
                             }
                         }
                 }
@@ -66,8 +66,8 @@ object LocationHelper {
         val userLoc = LatLng(lat, lng)
         val pos = CameraPosition.Builder()
             .target(userLoc)
-            .zoom(16.0) // Zoom level
-            .tilt(50.0) // 3D view
+            .zoom(16.0)
+            .tilt(50.0)
             .build()
         map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
     }
