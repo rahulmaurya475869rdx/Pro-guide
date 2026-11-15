@@ -27,23 +27,19 @@ class MainActivity : AppCompatActivity() {
 
         mapView = findViewById(R.id.mapView)
         mapView.onCreate(savedInstanceState)
-        
-        mapView.getMapAsync { map ->
-            mapLibreMap = map
-            // Map load hone par Default style set karein
-            map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
-                currentStyle = style
-                // Location enable karein (Ye khud tracking mode me chala jayega)
-                LocationHelper.enableLocation(this@MainActivity, map, style)
-            }
+
+        // Permission check
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+        } else {
+            setupMap()
         }
 
-        // 1. My Location Button (Target Icon)
+        // Buttons setup
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
-        // 2. Layers Button (Satellite <-> Default)
         findViewById<FloatingActionButton>(R.id.btnLayers).setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
@@ -64,29 +60,34 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 3. Download Button (Offline Save)
         findViewById<FloatingActionButton>(R.id.btnDownload).setOnClickListener {
             mapLibreMap?.let { map ->
-                // Jo mode abhi on hai, wahi style download karega
                 val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
                 OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
             }
         }
     }
 
-    // Permission Result
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            mapLibreMap?.let { map ->
-                currentStyle?.let { style -> 
-                    LocationHelper.enableLocation(this@MainActivity, map, style) 
-                }
+    private fun setupMap() {
+        mapView.getMapAsync { map ->
+            mapLibreMap = map
+            map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
+                currentStyle = style
+                LocationHelper.enableLocation(this@MainActivity, map, style)
+                LocationHelper.moveToCurrentLocation(this@MainActivity, map)
             }
         }
     }
 
-    // MapView Lifecycle Methods
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            setupMap()
+        } else {
+            Toast.makeText(this, "GPS permission zaroori hai!", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { super.onPause(); mapView.onPause() }
