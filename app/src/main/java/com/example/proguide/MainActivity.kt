@@ -32,6 +32,14 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
+import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
 
@@ -41,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private var currentStyle: Style? = null
     
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var btnRecord: FloatingActionButton
     
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
@@ -49,27 +58,32 @@ class MainActivity : AppCompatActivity() {
     
     private var isFirstLocationFix = true
 
+    // --- RECORDING VARIABLES ---
+    private var isRecording = false
+    private val recordedPoints = mutableListOf<LatLng>()
+    private var lastRecordedPoint: LatLng? = null
+    private val ROUTE_SOURCE_ID = "route-source"
+    private val ROUTE_LAYER_ID = "route-layer"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         MapLibre.getInstance(this)
         setContentView(R.layout.activity_main)
 
-        // Initialize Views
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
         dotGps = findViewById(R.id.dotGps)
         dotInternet = findViewById(R.id.dotInternet)
+        btnRecord = findViewById(R.id.btnRecord)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mapView.onCreate(savedInstanceState)
 
-        // Initial Dot Setup (Red Circles)
         setupCircleDot(dotGps, "#F44336")
         setupCircleDot(dotInternet, "#F44336")
 
-        // Permissions Check
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
@@ -78,33 +92,31 @@ class MainActivity : AppCompatActivity() {
             monitorInternetConnection()
         }
 
-        // 1. My Location Button
+        // Buttons
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
-        // 2. Layers Button (Satellite/Default)
         findViewById<FloatingActionButton>(R.id.btnLayers).setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
                     map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                         currentStyle = style
+                        setupRouteLayer(style) // Style change hone par layer wapas lagao
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
-                    Toast.makeText(this, "Default Mode", Toast.LENGTH_SHORT).show()
                 } else {
                     map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
                         currentStyle = style
+                        setupRouteLayer(style)
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
-                    Toast.makeText(this, "Satellite Mode", Toast.LENGTH_SHORT).show()
                 }
             }
         }
 
-        // 3. Menu Button (3 Lines) - Isme Download ka option hai
         findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener { view ->
             val popup = PopupMenu(this, view)
             popup.menu.add(0, 1, 0, "Download Offline Map")
@@ -115,15 +127,82 @@ class MainActivity : AppCompatActivity() {
                         OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
                     }
                     true
-                } else {
-                    false
-                }
+                } else false
             }
             popup.show()
         }
+
+        // --- NAYA: RECORD BUTTON LOGIC ---
+        btnRecord.setOnClickListener {
+            if (isRecording) {
+                stopRecording()
+            } else {
+                startRecording()
+            }
+        }
     }
 
-    // Dot ko Perfect Circle banane ka function
+    // Route line map par draw karne ke liye
+    private fun setupRouteLayer(style: Style) {
+        // Purana source/layer hatao agar majood hai
+        if (style.getSource(ROUTE_SOURCE_ID) != null) {
+            style.removeLayer(ROUTE_LAYER_ID)
+            style.removeSource(ROUTE_SOURCE_ID)
+        }
+
+        // Naya GeoJSON Source banayein
+        val geoJsonSource = GeoJsonSource(ROUTE_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()))
+        style.addSource(geoJsonSource)
+
+        // Blue Line Layer banayein
+        val lineLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
+            PropertyFactory.lineColor("#2196F3"), // Blue color
+            PropertyFactory.lineWidth(6f), // Mota line
+            PropertyFactory.lineJoin("round")
+        )
+        style.addLayer(lineLayer)
+    }
+
+    private fun startRecording() {
+        isRecording = true
+        recordedPoints.clear()
+        lastRecordedPoint = null
+        btnRecord.setImageResource(android.R.drawable.ic_media_pause) // Pause/Stop icon
+        Toast.makeText(this, "Recording Shuru! (Chalna shuru karein)", Toast.LENGTH_SHORT).show()
+        
+        // Map ko follow mode me rakhein
+        mapLibreMap?.locationComponent?.cameraMode = org.maplibre.android.location.modes.CameraMode.TRACKING
+    }
+
+    private fun stopRecording() {
+        isRecording = false
+        btnRecord.setImageResource(android.R.drawable.ic_media_play) // Play icon
+        Toast.makeText(this, "Recording Ruk Gayi! Total Points: ${recordedPoints.size}", Toast.LENGTH_LONG).show()
+    }
+
+    private fun updateRouteOnMap() {
+        if (recordedPoints.size < 2 || currentStyle == null) return
+
+        val lineString = LineString.fromLngLats(recordedPoints.map { Point.fromLngLat(it.longitude, it.latitude) })
+        val feature = Feature.fromGeometry(lineString)
+        val featureCollection = FeatureCollection.fromFeatures(arrayOf(feature))
+
+        val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
+        source?.setGeoJson(featureCollection)
+    }
+
+    // Distance Calculate karne ka formula (meter me)
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
+        val r = 6371000.0 // Earth radius in meters
+        val latDistance = Math.toRadians(lat2 - lat1)
+        val lonDistance = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2)
+        val c = 2 * Math.atan2(sqrt(a), sqrt(1 - a))
+        return (r * c).toFloat()
+    }
+
     private fun setupCircleDot(view: View, colorHex: String) {
         val drawable = GradientDrawable()
         drawable.shape = GradientDrawable.OVAL
@@ -136,6 +215,7 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap = map
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
+                setupRouteLayer(style) // Initial layer setup
                 LocationHelper.enableLocation(this@MainActivity, map, style)
             }
         }
@@ -154,6 +234,7 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
+                    // 1. UPDATE STATUS COLORS
                     when {
                         accuracy < 10.0 -> {
                             tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
@@ -173,9 +254,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    // Map ko move karna (Filtered)
+                    // 2. MAP MOVE LOGIC (Only if accuracy is good)
                     if (accuracy <= 30.0) {
                         val userLoc = LatLng(location.latitude, location.longitude)
+                        
                         if (isFirstLocationFix && mapLibreMap != null) {
                             val pos = CameraPosition.Builder()
                                 .target(userLoc)
@@ -184,6 +266,25 @@ class MainActivity : AppCompatActivity() {
                                 .build()
                             mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
                             isFirstLocationFix = false
+                        }
+
+                        // 3. RECORDING LOGIC (Filtered)
+                        if (isRecording) {
+                            if (lastRecordedPoint == null) {
+                                recordedPoints.add(userLoc)
+                                lastRecordedPoint = userLoc
+                            } else {
+                                // Check agar 5 meter se zyada door gaye hain
+                                val dist = calculateDistance(
+                                    lastRecordedPoint!!.latitude, lastRecordedPoint!!.longitude,
+                                    userLoc.latitude, userLoc.longitude
+                                )
+                                if (dist > 5.0) { // 5 meter filter
+                                    recordedPoints.add(userLoc)
+                                    lastRecordedPoint = userLoc
+                                    updateRouteOnMap()
+                                }
+                            }
                         }
                     }
                 }
