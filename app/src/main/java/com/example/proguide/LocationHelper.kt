@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -26,7 +27,8 @@ object LocationHelper {
         val locationComponent = map.locationComponent
         
         val options = LocationComponentOptions.builder(context)
-            .accuracyColor(Color.parseColor("#4CAF50"))
+            .accuracyColor(Color.parseColor("#4CAF50")) // Green circle
+            .pulseEnabled(true)
             .build()
 
         val activationOptions = LocationComponentActivationOptions.builder(context, style)
@@ -37,8 +39,6 @@ object LocationHelper {
         locationComponent.activateLocationComponent(activationOptions)
         locationComponent.isLocationComponentEnabled = true
         locationComponent.renderMode = RenderMode.COMPASS
-        
-        // NAYA: Camera ko tracking mode mein daala (Google Maps jaisa follow karega)
         locationComponent.cameraMode = CameraMode.TRACKING
     }
 
@@ -51,10 +51,13 @@ object LocationHelper {
                 if (location != null) {
                     moveCamera(map, location.latitude, location.longitude)
                 } else {
+                    // High Accuracy (Internet + GPS) fallback
                     fusedLocationClient.getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, null)
                         .addOnSuccessListener { currentLoc ->
                             if (currentLoc != null) {
                                 moveCamera(map, currentLoc.latitude, currentLoc.longitude)
+                            } else {
+                                Toast.makeText(context, "GPS aur Internet se location dhoond rahe hain...", Toast.LENGTH_SHORT).show()
                             }
                         }
                 }
