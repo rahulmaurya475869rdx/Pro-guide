@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         MapLibre.getInstance(this)
         setContentView(R.layout.activity_main)
 
+        // Initialize Views
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
@@ -68,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         setupCircleDot(dotGps, "#F44336")
         setupCircleDot(dotInternet, "#F44336")
 
+        // Permissions Check
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
@@ -76,12 +78,12 @@ class MainActivity : AppCompatActivity() {
             monitorInternetConnection()
         }
 
-        // My Location Button
+        // 1. My Location Button
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
-        // Layers Button (Satellite/Default)
+        // 2. Layers Button (Satellite/Default)
         findViewById<FloatingActionButton>(R.id.btnLayers).setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
@@ -102,13 +104,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // NAYA: Menu Button (3 Lines) Logic
+        // 3. Menu Button (3 Lines) - Isme Download ka option hai
         findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener { view ->
             val popup = PopupMenu(this, view)
             popup.menu.add(0, 1, 0, "Download Offline Map")
             popup.setOnMenuItemClickListener { item ->
                 if (item.itemId == 1) {
-                    // Download Function Call
                     mapLibreMap?.let { map ->
                         val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
                         OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
@@ -172,6 +173,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    // Map ko move karna (Filtered)
                     if (accuracy <= 30.0) {
                         val userLoc = LatLng(location.latitude, location.longitude)
                         if (isFirstLocationFix && mapLibreMap != null) {
