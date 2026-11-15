@@ -14,6 +14,12 @@ import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
 object OfflineMapManager {
 
     fun downloadCurrentArea(context: Context, map: MapLibreMap, styleUrl: String) {
+        val currentZoom = map.cameraPosition.zoom
+        if (currentZoom < 5.0) {
+            Toast.makeText(context, "Bhai, itna bada area download nahi kar sakte! Pehle apne gaon/saher par zoom karein.", Toast.LENGTH_LONG).show()
+            return
+        }
+
         val visibleRegion = map.projection.visibleRegion ?: return
         val latLngBounds = visibleRegion.latLngBounds
 
@@ -29,8 +35,6 @@ object OfflineMapManager {
         )
 
         val metadata = "My Downloaded Area".toByteArray()
-
-        // Background thread se UI update karne ke liye Handler
         val mainHandler = Handler(Looper.getMainLooper())
 
         OfflineManager.getInstance(context).createOfflineRegion(
