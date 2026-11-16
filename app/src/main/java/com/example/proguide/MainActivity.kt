@@ -1,6 +1,8 @@
 package com.example.proguide
 
 import android.Manifest
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
@@ -14,7 +16,9 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Looper
 import android.view.View
-import android.widget.PopupMenu
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +29,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -57,19 +62,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
     private lateinit var dotGps: View
+    private lateinit var pulseGps: View
     private lateinit var dotInternet: View
     
     private var isFirstLocationFix = true
+    private var isCompassModeEnabled = false
 
     // --- RECORDING VARIABLES ---
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
-    private var useSdCard = false // Storage option
+    private var useSdCard = false
     private val recordedPoints = mutableListOf<Feature>()
     
     private var lastRecordedLatLng: LatLng? = null
-    private var lastRecordedBearing: Float = 0f // Direction track karne ke liye
+    private var lastRecordedBearing: Float = 0f
     
     private val ROUTE_SOURCE_ID = "route-source"
     private val ROUTE_LAYER_ID = "route-layer"
@@ -84,6 +91,7 @@ class MainActivity : AppCompatActivity() {
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
         dotGps = findViewById(R.id.dotGps)
+        pulseGps = findViewById(R.id.pulseGps)
         dotInternet = findViewById(R.id.dotInternet)
         btnRecord = findViewById(R.id.btnRecord)
         btnReturn = findViewById(R.id.btnReturn)
@@ -100,6 +108,7 @@ class MainActivity : AppCompatActivity() {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
+            startPulseAnimation() // Animation Start
         }
 
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
@@ -126,33 +135,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Menu Button with Storage Options
-        findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener { view ->
-            val popup = PopupMenu(this, view)
-            popup.menu.add(0, 1, 0, "Storage: Internal (Phone)")
-            popup.menu.add(0, 2, 0, "Storage: SD Card")
-            popup.menu.add(0, 3, 0, "Check Storage Usage")
-            popup.menu.add(0, 4, 0, "Download Offline Map")
-            
-            popup.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    1 -> { useSdCard = false; Toast.makeText(this, "Storage set to Phone", Toast.LENGTH_SHORT).show() }
-                    2 -> { useSdCard = true; Toast.makeText(this, "Storage set to SD Card", Toast.LENGTH_SHORT).show() }
-                    3 -> {
-                        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this, useSdCard))
-                        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this, useSdCard))
-                        Toast.makeText(this, "Routes: $rSize\nMaps: $mSize", Toast.LENGTH_LONG).show()
-                    }
-                    4 -> {
-                        mapLibreMap?.let { map ->
-                            val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                            OfflineMapManager.downloadCurrentArea(this, map, styleToDownload, useSdCard)
-                        }
-                    }
-                }
-                true
-            }
-            popup.show()
+        // NAYA: Google Maps Style Bottom Sheet Menu
+        findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener {
+            showBottomSheetMenu()
         }
 
         btnRecord.setOnClickListener {
@@ -162,6 +147,73 @@ class MainActivity : AppCompatActivity() {
         btnReturn.setOnClickListener {
             if (isReturning) stopReturning() else startReturning()
         }
+    }
+
+    // 1. PULSE ANIMATION LOGIC (Dhadkan)
+    private fun startPulseAnimation() {
+        pulseGps.visibility = View.VISIBLE
+        
+        // Dot ka dhadakna (Scale up and down)
+        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.5f)
+        val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.5f)
+        val alphaUp = PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.3f)
+        
+        val scaleDown = PropertyValuesHolder.ofFloat(View.SCALE_X, 1.5f, 1f)
+        val scaleDownY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.5f, 1f)
+        val alphaDown = PropertyValuesHolder.ofFloat(View.ALPHA, 0.3f, 1f)
+
+        val pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(
+            pulseGps, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
+        )
+        pulseAnimator.duration = 1500 // 1.5 second ka pulse
+        pulseAnimator.repeatCount = ObjectAnimator.INFINITE
+        pulseAnimator.start()
+    }
+
+    // 2. BOTTOM SHEET MENU (Professional Look)
+    private fun showBottomSheetMenu() {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.layout_bottom_sheet, null)
+        dialog.setContentView(view)
+
+        val switchCompass = view.findViewById<Switch>(R.id.switchCompass)
+        val radioInternal = view.findViewById<RadioButton>(R.id.radioInternal)
+        val radioSdCard = view.findViewById<RadioButton>(R.id.radioSdCard)
+        val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
+        val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
+
+        // Compass Mode Setup
+        switchCompass.isChecked = isCompassModeEnabled
+        switchCompass.setOnCheckedChangeListener { _, isChecked ->
+            isCompassModeEnabled = isChecked
+            if (isChecked) {
+                mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING_COMPASS
+                Toast.makeText(this, "Map will rotate with device", Toast.LENGTH_SHORT).show()
+            } else {
+                mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
+            }
+        }
+
+        // Storage Setup
+        if (useSdCard) radioSdCard.isChecked = true else radioInternal.isChecked = true
+        
+        radioInternal.setOnClickListener { useSdCard = false; Toast.makeText(this, "Internal Selected", Toast.LENGTH_SHORT).show() }
+        radioSdCard.setOnClickListener { useSdCard = true; Toast.makeText(this, "SD Card Selected", Toast.LENGTH_SHORT).show() }
+
+        // Storage Size Check
+        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this, useSdCard))
+        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this, useSdCard))
+        tvStorageInfo.text = "Routes: $rSize | Maps: $mSize"
+
+        btnDownload.setOnClickListener {
+            mapLibreMap?.let { map ->
+                val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
+                OfflineMapManager.downloadCurrentArea(this, map, styleToDownload, useSdCard)
+                dialog.dismiss()
+            }
+        }
+
+        dialog.show()
     }
 
     private fun showVehicleSelectionDialog() {
@@ -198,7 +250,6 @@ class MainActivity : AppCompatActivity() {
         lastRecordedLatLng = null
         lastRecordedBearing = 0f
         
-        // File Save Shuru Karein
         RouteFileManager.startNewRoute(this, useSdCard)
         
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
@@ -211,10 +262,7 @@ class MainActivity : AppCompatActivity() {
         isRecording = false
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
-        
-        // File ko Compress Karein (ZIP)
         RouteFileManager.compressCurrentRoute()
-        
         Toast.makeText(this, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
     }
 
@@ -227,7 +275,7 @@ class MainActivity : AppCompatActivity() {
         val updatedFeatures = recordedPoints.map {
             val point = it.geometry() as Point
             val newFeature = Feature.fromGeometry(point)
-            newFeature.addStringProperty("color", "#00E676") // Green
+            newFeature.addStringProperty("color", "#00E676")
             newFeature
         }
         recordedPoints.clear()
@@ -250,7 +298,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Vehicle wise minimum distance
     private fun getMinDistance(): Float {
         return when(selectedVehicle) {
             "Walk" -> 10f
@@ -319,10 +366,8 @@ class MainActivity : AppCompatActivity() {
                             isFirstLocationFix = false
                         }
 
-                        // SMART RECORDING LOGIC (15m + Turn)
                         if (isRecording) {
                             var shouldRecord = false
-                            
                             if (lastRecordedLatLng == null) {
                                 shouldRecord = true
                             } else {
@@ -330,32 +375,21 @@ class MainActivity : AppCompatActivity() {
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
-                                
-                                // 1. Distance Logic (15 meter)
-                                if (dist > getMinDistance()) {
-                                    shouldRecord = true
-                                }
-                                
-                                // 2. Turn Logic (2 meter chalte hi 30 degree turn)
+                                if (dist > getMinDistance()) shouldRecord = true
                                 if (dist > 2f) {
                                     val bearingChange = abs(location.bearing - lastRecordedBearing)
-                                    if (bearingChange > 30f) { // Direction change
-                                        shouldRecord = true
-                                    }
+                                    if (bearingChange > 30f) shouldRecord = true
                                 }
                             }
 
                             if (shouldRecord) {
-                                addPointToRoute(userLoc, "#D500F9") // Purple
+                                addPointToRoute(userLoc, "#D500F9")
                                 lastRecordedLatLng = userLoc
                                 lastRecordedBearing = location.bearing
-                                
-                                // Direct file me save karein (RAM bachane ke liye)
                                 RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
                             }
                         } 
                         
-                        // Return Logic
                         if (isReturning) {
                             var isOffRoute = true
                             for (feature in recordedPoints) {
@@ -366,9 +400,7 @@ class MainActivity : AppCompatActivity() {
                                     break
                                 }
                             }
-                            if (isOffRoute) {
-                                addPointToRoute(userLoc, "#FF1744") // Red
-                            }
+                            if (isOffRoute) addPointToRoute(userLoc, "#FF1744")
                         }
                     }
                 }
@@ -418,6 +450,7 @@ class MainActivity : AppCompatActivity() {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
+            startPulseAnimation()
         }
     }
 
