@@ -40,6 +40,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity() {
@@ -63,9 +64,12 @@ class MainActivity : AppCompatActivity() {
     // --- RECORDING VARIABLES ---
     private var isRecording = false
     private var isReturning = false
-    private var selectedVehicle = "Car" // Default
+    private var selectedVehicle = "Car"
+    private var useSdCard = false // Storage option
     private val recordedPoints = mutableListOf<Feature>()
+    
     private var lastRecordedLatLng: LatLng? = null
+    private var lastRecordedBearing: Float = 0f // Direction track karne ke liye
     
     private val ROUTE_SOURCE_ID = "route-source"
     private val ROUTE_LAYER_ID = "route-layer"
@@ -98,7 +102,6 @@ class MainActivity : AppCompatActivity() {
             monitorInternetConnection()
         }
 
-        // Buttons
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
@@ -123,72 +126,65 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Menu Button with Storage Options
         findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener { view ->
             val popup = PopupMenu(this, view)
-            popup.menu.add(0, 1, 0, "Download Offline Map")
+            popup.menu.add(0, 1, 0, "Storage: Internal (Phone)")
+            popup.menu.add(0, 2, 0, "Storage: SD Card")
+            popup.menu.add(0, 3, 0, "Check Storage Usage")
+            popup.menu.add(0, 4, 0, "Download Offline Map")
+            
             popup.setOnMenuItemClickListener { item ->
-                if (item.itemId == 1) {
-                    mapLibreMap?.let { map ->
-                        val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                        OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload)
+                when (item.itemId) {
+                    1 -> { useSdCard = false; Toast.makeText(this, "Storage set to Phone", Toast.LENGTH_SHORT).show() }
+                    2 -> { useSdCard = true; Toast.makeText(this, "Storage set to SD Card", Toast.LENGTH_SHORT).show() }
+                    3 -> {
+                        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this, useSdCard))
+                        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this, useSdCard))
+                        Toast.makeText(this, "Routes: $rSize\nMaps: $mSize", Toast.LENGTH_LONG).show()
                     }
-                    true
-                } else false
+                    4 -> {
+                        mapLibreMap?.let { map ->
+                            val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
+                            OfflineMapManager.downloadCurrentArea(this, map, styleToDownload, useSdCard)
+                        }
+                    }
+                }
+                true
             }
             popup.show()
         }
 
-        // RECORD BUTTON LOGIC
         btnRecord.setOnClickListener {
-            if (isRecording) {
-                stopRecording()
-            } else {
-                showVehicleSelectionDialog()
-            }
+            if (isRecording) stopRecording() else showVehicleSelectionDialog()
         }
 
-        // RETURN BUTTON LOGIC
         btnReturn.setOnClickListener {
-            if (isReturning) {
-                stopReturning()
-            } else {
-                startReturning()
-            }
+            if (isReturning) stopReturning() else startReturning()
         }
     }
 
-    // 1. VEHICLE SELECTION DIALOG
     private fun showVehicleSelectionDialog() {
         val vehicles = arrayOf("Bike", "Car", "Walk", "Cycle")
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Select Vehicle for Recording")
-        builder.setSingleChoiceItems(vehicles, 1) { dialog, which ->
-            selectedVehicle = vehicles[which]
-        }
-        builder.setPositiveButton("Start") { _, _ ->
-            startRecording()
-        }
+        builder.setSingleChoiceItems(vehicles, 1) { _, which -> selectedVehicle = vehicles[which] }
+        builder.setPositiveButton("Start") { _, _ -> startRecording() }
         builder.setNegativeButton("Cancel", null)
         builder.show()
     }
 
-    // 2. SETUP CIRCLE LAYER (DOTS INSTEAD OF LINE)
     private fun setupRouteLayer(style: Style) {
         if (style.getSource(ROUTE_SOURCE_ID) != null) {
             style.removeLayer(ROUTE_LAYER_ID)
             style.removeSource(ROUTE_SOURCE_ID)
         }
-
         val geoJsonSource = GeoJsonSource(ROUTE_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()))
         style.addSource(geoJsonSource)
 
-        // Circle Layer (Dots)
         val circleLayer = CircleLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-            PropertyFactory.circleRadius(6f), // Dot ka size
-            PropertyFactory.circleColor(
-                // GeoJSON property 'color' ke hisaab se dot ka color change hoga
-                org.maplibre.android.style.expressions.Expression.get("color")
-            ),
+            PropertyFactory.circleRadius(6f),
+            PropertyFactory.circleColor(org.maplibre.android.style.expressions.Expression.get("color")),
             PropertyFactory.circleStrokeWidth(1.5f),
             PropertyFactory.circleStrokeColor("#FFFFFF")
         )
@@ -200,6 +196,11 @@ class MainActivity : AppCompatActivity() {
         isReturning = false
         recordedPoints.clear()
         lastRecordedLatLng = null
+        lastRecordedBearing = 0f
+        
+        // File Save Shuru Karein
+        RouteFileManager.startNewRoute(this, useSdCard)
+        
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
         Toast.makeText(this, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
@@ -209,18 +210,20 @@ class MainActivity : AppCompatActivity() {
     private fun stopRecording() {
         isRecording = false
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
-        btnReturn.visibility = View.VISIBLE // Return button show karo
-        Toast.makeText(this, "Recording Saved! Click Green Button to Return.", Toast.LENGTH_LONG).show()
+        btnReturn.visibility = View.VISIBLE 
+        
+        // File ko Compress Karein (ZIP)
+        RouteFileManager.compressCurrentRoute()
+        
+        Toast.makeText(this, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
     }
 
-    // 3. RETURN MODE LOGIC (Changing colors to Green)
     private fun startReturning() {
         isReturning = true
         isRecording = false
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
-        Toast.makeText(this, "Return Mode: Follow the dots back!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Return Mode: Follow the dots!", Toast.LENGTH_SHORT).show()
         
-        // Puraane points ko Green kar do (Return mode start)
         val updatedFeatures = recordedPoints.map {
             val point = it.geometry() as Point
             val newFeature = Feature.fromGeometry(point)
@@ -239,21 +242,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateRouteOnMap() {
-        if (currentStyle == null) return
-        // Yahan .toTypedArray() use karna zaroori hai
-        val featureCollection = FeatureCollection.fromFeatures(recordedPoints.toTypedArray())
-        val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
-        source?.setGeoJson(featureCollection)
+        runOnUiThread {
+            if (currentStyle == null) return@runOnUiThread
+            val featureCollection = FeatureCollection.fromFeatures(recordedPoints.toTypedArray())
+            val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
+            source?.setGeoJson(featureCollection)
+        }
     }
 
-    // 4. GPS FILTERING (Vehicle ke hisaab se)
-    private fun getVehicleDistanceFilter(): Float {
+    // Vehicle wise minimum distance
+    private fun getMinDistance(): Float {
         return when(selectedVehicle) {
             "Walk" -> 10f
-            "Cycle" -> 20f
-            "Bike" -> 30f
-            "Car" -> 50f
-            else -> 30f
+            "Cycle" -> 15f
+            "Bike" -> 20f
+            "Car" -> 30f
+            else -> 15f
         }
     }
 
@@ -299,7 +303,6 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // Status Update
                     when {
                         accuracy < 10.0 -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#4CAF50") }
                         accuracy < 20.0 -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#2196F3") }
@@ -316,34 +319,55 @@ class MainActivity : AppCompatActivity() {
                             isFirstLocationFix = false
                         }
 
-                        // RECORDING & COLOR LOGIC
+                        // SMART RECORDING LOGIC (15m + Turn)
                         if (isRecording) {
+                            var shouldRecord = false
+                            
                             if (lastRecordedLatLng == null) {
-                                addPointToRoute(userLoc, "#D500F9") // Purple
-                                lastRecordedLatLng = userLoc
+                                shouldRecord = true
                             } else {
                                 val dist = calculateDistance(
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
-                                // Vehicle filter lagao
-                                if (dist > getVehicleDistanceFilter()) {
-                                    addPointToRoute(userLoc, "#D500F9") // Purple
-                                    lastRecordedLatLng = userLoc
+                                
+                                // 1. Distance Logic (15 meter)
+                                if (dist > getMinDistance()) {
+                                    shouldRecord = true
                                 }
+                                
+                                // 2. Turn Logic (2 meter chalte hi 30 degree turn)
+                                if (dist > 2f) {
+                                    val bearingChange = abs(location.bearing - lastRecordedBearing)
+                                    if (bearingChange > 30f) { // Direction change
+                                        shouldRecord = true
+                                    }
+                                }
+                            }
+
+                            if (shouldRecord) {
+                                addPointToRoute(userLoc, "#D500F9") // Purple
+                                lastRecordedLatLng = userLoc
+                                lastRecordedBearing = location.bearing
+                                
+                                // Direct file me save karein (RAM bachane ke liye)
+                                RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
                             }
                         } 
                         
-                        // RETURN MODE LOGIC (Agar wapas aa rahe hain)
+                        // Return Logic
                         if (isReturning) {
-                             if (lastRecordedLatLng != null) {
-                                val dist = calculateDistance(
-                                    lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
-                                    userLoc.latitude, userLoc.longitude
-                                )
-                                if (dist > 40f) { // 40 meter door = Bhatak gaya
-                                    addPointToRoute(userLoc, "#FF1744") // Red dot for wrong turn
+                            var isOffRoute = true
+                            for (feature in recordedPoints) {
+                                val p = feature.geometry() as Point
+                                val dist = calculateDistance(p.latitude(), p.longitude(), userLoc.latitude, userLoc.longitude)
+                                if (dist < 40f) {
+                                    isOffRoute = false
+                                    break
                                 }
+                            }
+                            if (isOffRoute) {
+                                addPointToRoute(userLoc, "#FF1744") // Red
                             }
                         }
                     }
@@ -354,7 +378,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun addPointToRoute(latLng: LatLng, colorHex: String) {
         val point = Point.fromLngLat(latLng.longitude, latLng.latitude)
-        // JsonObject ke bajaye addStringProperty use karein
         val feature = Feature.fromGeometry(point)
         feature.addStringProperty("color", colorHex)
         recordedPoints.add(feature)
