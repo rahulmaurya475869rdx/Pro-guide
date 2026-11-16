@@ -68,7 +68,6 @@ class MainActivity : AppCompatActivity() {
     private var isFirstLocationFix = true
     private var isCompassModeEnabled = false
 
-    // --- RECORDING VARIABLES ---
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
@@ -84,7 +83,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        MapLibre.getInstance(this)
+        MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
         mapView = findViewById(R.id.mapView)
@@ -96,19 +95,19 @@ class MainActivity : AppCompatActivity() {
         btnRecord = findViewById(R.id.btnRecord)
         btnReturn = findViewById(R.id.btnReturn)
         
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
 
         setupCircleDot(dotGps, "#F44336")
         setupCircleDot(dotInternet, "#F44336")
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+        if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
-            startPulseAnimation() // Animation Start
+            startPulseAnimation() 
         }
 
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
@@ -135,7 +134,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // NAYA: Google Maps Style Bottom Sheet Menu
         findViewById<FloatingActionButton>(R.id.btnMenu).setOnClickListener {
             showBottomSheetMenu()
         }
@@ -149,11 +147,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 1. PULSE ANIMATION LOGIC (Dhadkan)
     private fun startPulseAnimation() {
         pulseGps.visibility = View.VISIBLE
         
-        // Dot ka dhadakna (Scale up and down)
         val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.5f)
         val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.5f)
         val alphaUp = PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.3f)
@@ -165,14 +161,13 @@ class MainActivity : AppCompatActivity() {
         val pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(
             pulseGps, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
         )
-        pulseAnimator.duration = 1500 // 1.5 second ka pulse
+        pulseAnimator.duration = 1500 
         pulseAnimator.repeatCount = ObjectAnimator.INFINITE
         pulseAnimator.start()
     }
 
-    // 2. BOTTOM SHEET MENU (Professional Look)
     private fun showBottomSheetMenu() {
-        val dialog = BottomSheetDialog(this)
+        val dialog = BottomSheetDialog(this@MainActivity)
         val view = layoutInflater.inflate(R.layout.layout_bottom_sheet, null)
         dialog.setContentView(view)
 
@@ -182,33 +177,36 @@ class MainActivity : AppCompatActivity() {
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
 
-        // Compass Mode Setup
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
             isCompassModeEnabled = isChecked
             if (isChecked) {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING_COMPASS
-                Toast.makeText(this, "Map will rotate with device", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Map will rotate with device", Toast.LENGTH_SHORT).show()
             } else {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
             }
         }
 
-        // Storage Setup
         if (useSdCard) radioSdCard.isChecked = true else radioInternal.isChecked = true
         
-        radioInternal.setOnClickListener { useSdCard = false; Toast.makeText(this, "Internal Selected", Toast.LENGTH_SHORT).show() }
-        radioSdCard.setOnClickListener { useSdCard = true; Toast.makeText(this, "SD Card Selected", Toast.LENGTH_SHORT).show() }
+        radioInternal.setOnClickListener { 
+            useSdCard = false
+            Toast.makeText(this@MainActivity, "Internal Selected", Toast.LENGTH_SHORT).show() 
+        }
+        radioSdCard.setOnClickListener { 
+            useSdCard = true
+            Toast.makeText(this@MainActivity, "SD Card Selected", Toast.LENGTH_SHORT).show() 
+        }
 
-        // Storage Size Check
-        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this, useSdCard))
-        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this, useSdCard))
+        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
+        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
         tvStorageInfo.text = "Routes: $rSize | Maps: $mSize"
 
         btnDownload.setOnClickListener {
             mapLibreMap?.let { map ->
                 val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                OfflineMapManager.downloadCurrentArea(this, map, styleToDownload, useSdCard)
+                OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload, useSdCard)
                 dialog.dismiss()
             }
         }
@@ -218,7 +216,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showVehicleSelectionDialog() {
         val vehicles = arrayOf("Bike", "Car", "Walk", "Cycle")
-        val builder = AlertDialog.Builder(this)
+        val builder = AlertDialog.Builder(this@MainActivity)
         builder.setTitle("Select Vehicle for Recording")
         builder.setSingleChoiceItems(vehicles, 1) { _, which -> selectedVehicle = vehicles[which] }
         builder.setPositiveButton("Start") { _, _ -> startRecording() }
@@ -250,11 +248,11 @@ class MainActivity : AppCompatActivity() {
         lastRecordedLatLng = null
         lastRecordedBearing = 0f
         
-        RouteFileManager.startNewRoute(this, useSdCard)
+        RouteFileManager.startNewRoute(this@MainActivity, useSdCard)
         
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
-        Toast.makeText(this, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
         mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
     }
 
@@ -263,14 +261,14 @@ class MainActivity : AppCompatActivity() {
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
         RouteFileManager.compressCurrentRoute()
-        Toast.makeText(this, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this@MainActivity, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
     }
 
     private fun startReturning() {
         isReturning = true
         isRecording = false
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
-        Toast.makeText(this, "Return Mode: Follow the dots!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Return Mode: Follow the dots!", Toast.LENGTH_SHORT).show()
         
         val updatedFeatures = recordedPoints.map {
             val point = it.geometry() as Point
@@ -286,7 +284,7 @@ class MainActivity : AppCompatActivity() {
     private fun stopReturning() {
         isReturning = false
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
-        Toast.makeText(this, "Return Mode Stopped.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Return Mode Stopped.", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateRouteOnMap() {
@@ -339,7 +337,7 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
 
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000)
             .setMinUpdateIntervalMillis(1000)
