@@ -223,7 +223,9 @@ class MainActivity : AppCompatActivity() {
         // Puraane points ko Green kar do (Return mode start)
         val updatedFeatures = recordedPoints.map {
             val point = it.geometry() as Point
-            Feature.fromGeometry(point, org.maplibre.geojson.JsonObject().apply { addProperty("color", "#00E676") }) // Green
+            val newFeature = Feature.fromGeometry(point)
+            newFeature.addStringProperty("color", "#00E676") // Green
+            newFeature
         }
         recordedPoints.clear()
         recordedPoints.addAll(updatedFeatures)
@@ -238,6 +240,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateRouteOnMap() {
         if (currentStyle == null) return
+        // Yahan .toTypedArray() use karna zaroori hai
         val featureCollection = FeatureCollection.fromFeatures(recordedPoints.toTypedArray())
         val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
         source?.setGeoJson(featureCollection)
@@ -333,9 +336,6 @@ class MainActivity : AppCompatActivity() {
                         
                         // RETURN MODE LOGIC (Agar wapas aa rahe hain)
                         if (isReturning) {
-                            // Yahan hum check kar sakte hain ki user route ke paas hai ya door.
-                            // Agar door hai (bhatak gaya), toh Red dot lagao.
-                            // Filhaal simple rakh rahe hain: purane dots green hain, agar user route se 30m door gaya toh Red dot lagao.
                              if (lastRecordedLatLng != null) {
                                 val dist = calculateDistance(
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
@@ -354,10 +354,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun addPointToRoute(latLng: LatLng, colorHex: String) {
         val point = Point.fromLngLat(latLng.longitude, latLng.latitude)
-        val properties = org.maplibre.geojson.JsonObject().apply {
-            addProperty("color", colorHex)
-        }
-        val feature = Feature.fromGeometry(point, properties)
+        // JsonObject ke bajaye addStringProperty use karein
+        val feature = Feature.fromGeometry(point)
+        feature.addStringProperty("color", colorHex)
         recordedPoints.add(feature)
         updateRouteOnMap()
     }
