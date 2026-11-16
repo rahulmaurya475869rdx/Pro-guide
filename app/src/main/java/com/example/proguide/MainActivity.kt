@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private var isFirstLocationFix = true
     private var isCompassModeEnabled = false
 
+    // --- RECORDING VARIABLES ---
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
@@ -76,6 +77,7 @@ class MainActivity : AppCompatActivity() {
     
     private var lastRecordedLatLng: LatLng? = null
     private var lastRecordedBearing: Float = 0f
+    private var lastOffRouteTime: Long = 0
     
     private val ROUTE_SOURCE_ID = "route-source"
     private val ROUTE_LAYER_ID = "route-layer"
@@ -86,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
+        // Initialize Views
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
@@ -101,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         setupCircleDot(dotGps, "#F44336")
         setupCircleDot(dotInternet, "#F44336")
 
+        // Permissions Check
         if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
@@ -110,6 +114,7 @@ class MainActivity : AppCompatActivity() {
             startPulseAnimation() 
         }
 
+        // Button Listeners
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
@@ -147,6 +152,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Pulse Animation (Dhadkan)
     private fun startPulseAnimation() {
         pulseGps.visibility = View.VISIBLE
         
@@ -166,9 +172,12 @@ class MainActivity : AppCompatActivity() {
         pulseAnimator.start()
     }
 
+    // Google Maps Style Bottom Sheet Menu
     private fun showBottomSheetMenu() {
         val dialog = BottomSheetDialog(this@MainActivity)
-        val view = layoutInflater.inflate(R.layout.layout_bottom_sheet, null)
+        
+        // Yahan Overload error fix kiya gaya hai (as View)
+        val view = layoutInflater.inflate(R.layout.layout_bottom_sheet, null) as View
         dialog.setContentView(view)
 
         val switchCompass = view.findViewById<Switch>(R.id.switchCompass)
@@ -348,6 +357,7 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
+                    // Status Update
                     when {
                         accuracy < 10.0 -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#4CAF50") }
                         accuracy < 20.0 -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#2196F3") }
@@ -364,8 +374,10 @@ class MainActivity : AppCompatActivity() {
                             isFirstLocationFix = false
                         }
 
+                        // SMART RECORDING LOGIC (15m + Turn)
                         if (isRecording) {
                             var shouldRecord = false
+                            
                             if (lastRecordedLatLng == null) {
                                 shouldRecord = true
                             } else {
@@ -373,7 +385,9 @@ class MainActivity : AppCompatActivity() {
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
+                                
                                 if (dist > getMinDistance()) shouldRecord = true
+                                
                                 if (dist > 2f) {
                                     val bearingChange = abs(location.bearing - lastRecordedBearing)
                                     if (bearingChange > 30f) shouldRecord = true
@@ -381,13 +395,14 @@ class MainActivity : AppCompatActivity() {
                             }
 
                             if (shouldRecord) {
-                                addPointToRoute(userLoc, "#D500F9")
+                                addPointToRoute(userLoc, "#D500F9") // Purple
                                 lastRecordedLatLng = userLoc
                                 lastRecordedBearing = location.bearing
                                 RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
                             }
                         } 
                         
+                        // RETURN MODE LOGIC
                         if (isReturning) {
                             var isOffRoute = true
                             for (feature in recordedPoints) {
@@ -398,7 +413,13 @@ class MainActivity : AppCompatActivity() {
                                     break
                                 }
                             }
-                            if (isOffRoute) addPointToRoute(userLoc, "#FF1744")
+                            if (isOffRoute) {
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastOffRouteTime > 10000) {
+                                    addPointToRoute(userLoc, "#FF1744") // Red
+                                    lastOffRouteTime = currentTime
+                                }
+                            }
                         }
                     }
                 }
