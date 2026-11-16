@@ -21,20 +21,17 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- GPS Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingBottom="8dp">
-            
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:src="@android:drawable/ic_menu_mylocation"
                 app:tint="#FFFFFF" />
-
             <TextView
                 android:id="@+id/tvGpsStatus"
                 android:layout_width="wrap_content"
@@ -44,7 +41,6 @@
                 android:textColor="#FFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
-
             <View
                 android:id="@+id/dotGps"
                 android:layout_width="14dp"
@@ -52,19 +48,16 @@
                 android:layout_marginStart="8dp" />
         </LinearLayout>
 
-        <!-- Internet Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-            
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:src="@android:drawable/ic_menu_compass"
                 app:tint="#FFFFFF" />
-
             <TextView
                 android:id="@+id/tvNetStatus"
                 android:layout_width="wrap_content"
@@ -74,7 +67,6 @@
                 android:textColor="#FFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
-
             <View
                 android:id="@+id/dotInternet"
                 android:layout_width="14dp"
@@ -96,7 +88,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Menu Button (3 Lines) -->
+    <!-- Menu Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMenu"
         android:layout_width="wrap_content"
@@ -109,7 +101,21 @@
         app:layout_constraintTop_toBottomOf="@+id/btnLayers"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Record Button (Bottom Right - Red) -->
+    <!-- NAYA: Return Button (Initially Hidden) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/btnReturn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:layout_marginEnd="16dp"
+        android:visibility="gone" 
+        android:src="@android:drawable/ic_menu_revert"
+        app:backgroundTint="#00E676" 
+        app:tint="#000000"
+        app:layout_constraintBottom_toTopOf="@+id/btnMyLocation"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Record Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnRecord"
         android:layout_width="wrap_content"
@@ -121,7 +127,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- My Location Button (Bottom Right - Blue) -->
+    <!-- My Location Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMyLocation"
         android:layout_width="wrap_content"
