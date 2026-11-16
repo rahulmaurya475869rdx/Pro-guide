@@ -2,6 +2,7 @@ package com.example.proguide
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -29,15 +30,15 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlin.math.sqrt
 
@@ -50,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var btnRecord: FloatingActionButton
+    private lateinit var btnReturn: FloatingActionButton
     
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
@@ -60,8 +62,11 @@ class MainActivity : AppCompatActivity() {
 
     // --- RECORDING VARIABLES ---
     private var isRecording = false
-    private val recordedPoints = mutableListOf<LatLng>()
-    private var lastRecordedPoint: LatLng? = null
+    private var isReturning = false
+    private var selectedVehicle = "Car" // Default
+    private val recordedPoints = mutableListOf<Feature>()
+    private var lastRecordedLatLng: LatLng? = null
+    
     private val ROUTE_SOURCE_ID = "route-source"
     private val ROUTE_LAYER_ID = "route-layer"
 
@@ -77,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         dotGps = findViewById(R.id.dotGps)
         dotInternet = findViewById(R.id.dotInternet)
         btnRecord = findViewById(R.id.btnRecord)
+        btnReturn = findViewById(R.id.btnReturn)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         mapView.onCreate(savedInstanceState)
@@ -102,7 +108,7 @@ class MainActivity : AppCompatActivity() {
                 if (isSatelliteMode) {
                     map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                         currentStyle = style
-                        setupRouteLayer(style) // Style change hone par layer wapas lagao
+                        setupRouteLayer(style)
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
@@ -132,68 +138,124 @@ class MainActivity : AppCompatActivity() {
             popup.show()
         }
 
-        // --- NAYA: RECORD BUTTON LOGIC ---
+        // RECORD BUTTON LOGIC
         btnRecord.setOnClickListener {
             if (isRecording) {
                 stopRecording()
             } else {
-                startRecording()
+                showVehicleSelectionDialog()
+            }
+        }
+
+        // RETURN BUTTON LOGIC
+        btnReturn.setOnClickListener {
+            if (isReturning) {
+                stopReturning()
+            } else {
+                startReturning()
             }
         }
     }
 
-    // Route line map par draw karne ke liye
+    // 1. VEHICLE SELECTION DIALOG
+    private fun showVehicleSelectionDialog() {
+        val vehicles = arrayOf("Bike", "Car", "Walk", "Cycle")
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Select Vehicle for Recording")
+        builder.setSingleChoiceItems(vehicles, 1) { dialog, which ->
+            selectedVehicle = vehicles[which]
+        }
+        builder.setPositiveButton("Start") { _, _ ->
+            startRecording()
+        }
+        builder.setNegativeButton("Cancel", null)
+        builder.show()
+    }
+
+    // 2. SETUP CIRCLE LAYER (DOTS INSTEAD OF LINE)
     private fun setupRouteLayer(style: Style) {
-        // Purana source/layer hatao agar majood hai
         if (style.getSource(ROUTE_SOURCE_ID) != null) {
             style.removeLayer(ROUTE_LAYER_ID)
             style.removeSource(ROUTE_SOURCE_ID)
         }
 
-        // Naya GeoJSON Source banayein
         val geoJsonSource = GeoJsonSource(ROUTE_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()))
         style.addSource(geoJsonSource)
 
-        // Blue Line Layer banayein
-        val lineLayer = LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-            PropertyFactory.lineColor("#2196F3"), // Blue color
-            PropertyFactory.lineWidth(6f), // Mota line
-            PropertyFactory.lineJoin("round")
+        // Circle Layer (Dots)
+        val circleLayer = CircleLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
+            PropertyFactory.circleRadius(6f), // Dot ka size
+            PropertyFactory.circleColor(
+                // GeoJSON property 'color' ke hisaab se dot ka color change hoga
+                org.maplibre.android.style.expressions.Expression.get("color")
+            ),
+            PropertyFactory.circleStrokeWidth(1.5f),
+            PropertyFactory.circleStrokeColor("#FFFFFF")
         )
-        style.addLayer(lineLayer)
+        style.addLayer(circleLayer)
     }
 
     private fun startRecording() {
         isRecording = true
+        isReturning = false
         recordedPoints.clear()
-        lastRecordedPoint = null
-        btnRecord.setImageResource(android.R.drawable.ic_media_pause) // Pause/Stop icon
-        Toast.makeText(this, "Recording Shuru! (Chalna shuru karein)", Toast.LENGTH_SHORT).show()
-        
-        // Map ko follow mode me rakhein
-        mapLibreMap?.locationComponent?.cameraMode = org.maplibre.android.location.modes.CameraMode.TRACKING
+        lastRecordedLatLng = null
+        btnRecord.setImageResource(android.R.drawable.ic_media_pause)
+        btnReturn.visibility = View.GONE
+        Toast.makeText(this, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
+        mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
     }
 
     private fun stopRecording() {
         isRecording = false
-        btnRecord.setImageResource(android.R.drawable.ic_media_play) // Play icon
-        Toast.makeText(this, "Recording Ruk Gayi! Total Points: ${recordedPoints.size}", Toast.LENGTH_LONG).show()
+        btnRecord.setImageResource(android.R.drawable.ic_media_play)
+        btnReturn.visibility = View.VISIBLE // Return button show karo
+        Toast.makeText(this, "Recording Saved! Click Green Button to Return.", Toast.LENGTH_LONG).show()
+    }
+
+    // 3. RETURN MODE LOGIC (Changing colors to Green)
+    private fun startReturning() {
+        isReturning = true
+        isRecording = false
+        btnReturn.setImageResource(android.R.drawable.ic_media_pause)
+        Toast.makeText(this, "Return Mode: Follow the dots back!", Toast.LENGTH_SHORT).show()
+        
+        // Puraane points ko Green kar do (Return mode start)
+        val updatedFeatures = recordedPoints.map {
+            val point = it.geometry() as Point
+            Feature.fromGeometry(point, org.maplibre.geojson.JsonObject().apply { addProperty("color", "#00E676") }) // Green
+        }
+        recordedPoints.clear()
+        recordedPoints.addAll(updatedFeatures)
+        updateRouteOnMap()
+    }
+
+    private fun stopReturning() {
+        isReturning = false
+        btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
+        Toast.makeText(this, "Return Mode Stopped.", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateRouteOnMap() {
-        if (recordedPoints.size < 2 || currentStyle == null) return
-
-        val lineString = LineString.fromLngLats(recordedPoints.map { Point.fromLngLat(it.longitude, it.latitude) })
-        val feature = Feature.fromGeometry(lineString)
-        val featureCollection = FeatureCollection.fromFeatures(arrayOf(feature))
-
+        if (currentStyle == null) return
+        val featureCollection = FeatureCollection.fromFeatures(recordedPoints.toTypedArray())
         val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
         source?.setGeoJson(featureCollection)
     }
 
-    // Distance Calculate karne ka formula (meter me)
+    // 4. GPS FILTERING (Vehicle ke hisaab se)
+    private fun getVehicleDistanceFilter(): Float {
+        return when(selectedVehicle) {
+            "Walk" -> 10f
+            "Cycle" -> 20f
+            "Bike" -> 30f
+            "Car" -> 50f
+            else -> 30f
+        }
+    }
+
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val r = 6371000.0 // Earth radius in meters
+        val r = 6371000.0
         val latDistance = Math.toRadians(lat2 - lat1)
         val lonDistance = Math.toRadians(lon2 - lon1)
         val a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2) +
@@ -215,7 +277,7 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap = map
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
-                setupRouteLayer(style) // Initial layer setup
+                setupRouteLayer(style)
                 LocationHelper.enableLocation(this@MainActivity, map, style)
             }
         }
@@ -234,55 +296,53 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // 1. UPDATE STATUS COLORS
+                    // Status Update
                     when {
-                        accuracy < 10.0 -> {
-                            tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
-                            setupCircleDot(dotGps, "#4CAF50") // Green
-                        }
-                        accuracy < 20.0 -> {
-                            tvGpsStatus.text = "Good (${accuracy.toInt()}m)"
-                            setupCircleDot(dotGps, "#2196F3") // Blue
-                        }
-                        accuracy < 50.0 -> {
-                            tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"
-                            setupCircleDot(dotGps, "#FFC107") // Yellow
-                        }
-                        else -> {
-                            tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"
-                            setupCircleDot(dotGps, "#F44336") // Red
-                        }
+                        accuracy < 10.0 -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#4CAF50") }
+                        accuracy < 20.0 -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#2196F3") }
+                        accuracy < 50.0 -> { tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#FFC107") }
+                        else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#F44336") }
                     }
 
-                    // 2. MAP MOVE LOGIC (Only if accuracy is good)
                     if (accuracy <= 30.0) {
                         val userLoc = LatLng(location.latitude, location.longitude)
                         
                         if (isFirstLocationFix && mapLibreMap != null) {
-                            val pos = CameraPosition.Builder()
-                                .target(userLoc)
-                                .zoom(16.0)
-                                .tilt(50.0)
-                                .build()
+                            val pos = CameraPosition.Builder().target(userLoc).zoom(16.0).tilt(50.0).build()
                             mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
                             isFirstLocationFix = false
                         }
 
-                        // 3. RECORDING LOGIC (Filtered)
+                        // RECORDING & COLOR LOGIC
                         if (isRecording) {
-                            if (lastRecordedPoint == null) {
-                                recordedPoints.add(userLoc)
-                                lastRecordedPoint = userLoc
+                            if (lastRecordedLatLng == null) {
+                                addPointToRoute(userLoc, "#D500F9") // Purple
+                                lastRecordedLatLng = userLoc
                             } else {
-                                // Check agar 5 meter se zyada door gaye hain
                                 val dist = calculateDistance(
-                                    lastRecordedPoint!!.latitude, lastRecordedPoint!!.longitude,
+                                    lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
-                                if (dist > 5.0) { // 5 meter filter
-                                    recordedPoints.add(userLoc)
-                                    lastRecordedPoint = userLoc
-                                    updateRouteOnMap()
+                                // Vehicle filter lagao
+                                if (dist > getVehicleDistanceFilter()) {
+                                    addPointToRoute(userLoc, "#D500F9") // Purple
+                                    lastRecordedLatLng = userLoc
+                                }
+                            }
+                        } 
+                        
+                        // RETURN MODE LOGIC (Agar wapas aa rahe hain)
+                        if (isReturning) {
+                            // Yahan hum check kar sakte hain ki user route ke paas hai ya door.
+                            // Agar door hai (bhatak gaya), toh Red dot lagao.
+                            // Filhaal simple rakh rahe hain: purane dots green hain, agar user route se 30m door gaya toh Red dot lagao.
+                             if (lastRecordedLatLng != null) {
+                                val dist = calculateDistance(
+                                    lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
+                                    userLoc.latitude, userLoc.longitude
+                                )
+                                if (dist > 40f) { // 40 meter door = Bhatak gaya
+                                    addPointToRoute(userLoc, "#FF1744") // Red dot for wrong turn
                                 }
                             }
                         }
@@ -292,11 +352,19 @@ class MainActivity : AppCompatActivity() {
         }, Looper.getMainLooper())
     }
 
+    private fun addPointToRoute(latLng: LatLng, colorHex: String) {
+        val point = Point.fromLngLat(latLng.longitude, latLng.latitude)
+        val properties = org.maplibre.geojson.JsonObject().apply {
+            addProperty("color", colorHex)
+        }
+        val feature = Feature.fromGeometry(point, properties)
+        recordedPoints.add(feature)
+        updateRouteOnMap()
+    }
+
     private fun monitorInternetConnection() {
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val networkRequest = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
+        val networkRequest = NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
 
         connectivityManager.registerNetworkCallback(networkRequest, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
@@ -313,7 +381,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-
             override fun onLost(network: Network) {
                 runOnUiThread {
                     tvNetStatus.text = "Offline"
@@ -321,13 +388,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
-        
-        val activeNetwork = connectivityManager.activeNetwork
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
-        if (capabilities == null) {
-            setupCircleDot(dotInternet, "#F44336")
-            tvNetStatus.text = "Offline"
-        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -336,8 +396,6 @@ class MainActivity : AppCompatActivity() {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
-        } else {
-            Toast.makeText(this, "GPS permission zaroori hai!", Toast.LENGTH_LONG).show()
         }
     }
 
