@@ -1,42 +1,8 @@
-plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-}
-
-android {
-    namespace 'com.example.proguide'
-    compileSdk 34
-
-    defaultConfig {
-        applicationId "com.example.proguide"
-        minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-        }
-    }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-}
-
 dependencies {
-    // MapLibre SDK for Maps
-    implementation 'org.maplibre.gl:android-sdk:11.5.2'
+    // Purane 11.5.2 ki jagah ye likho:
+    implementation 'org.maplibre.gl:android-sdk:11.13.5'
 
-    // Location services (GPS tracking)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
-
-    // Basic Android dependencies
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
