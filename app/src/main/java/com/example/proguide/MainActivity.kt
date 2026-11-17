@@ -15,7 +15,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location
+import android.location.Location // IMPORTANT: Ye import add kiya hai
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -382,12 +382,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // ULTIMATE FIX: Using Android's built-in Location.distanceBetween
-    // This avoids all Math.sin/Math.cos Float/Double errors completely!
+    // FIXED: Android ka built-in Location system use kar rahe hain (No Math.sin/cos)
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val results = FloatArray(1)
-        Location.distanceBetween(lat1, lon1, lat2, lon2, results)
-        return results[0]
+        val startLoc = Location("start").apply { latitude = lat1; longitude = lon1 }
+        val endLoc = Location("end").apply { latitude = lat2; longitude = lon2 }
+        return startLoc.distanceTo(endLoc)
     }
 
     private fun setupMap() {
