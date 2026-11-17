@@ -39,6 +39,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -66,6 +67,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var btnRecord: FloatingActionButton
     private lateinit var btnReturn: FloatingActionButton
+    private lateinit var btnSatellite: MaterialCardView
+    private lateinit var tvSatelliteIcon: TextView
     
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
@@ -115,6 +118,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         
         btnRecord = findViewById(R.id.btnRecord)
         btnReturn = findViewById(R.id.btnReturn)
+        btnSatellite = findViewById(R.id.btnSatellite)
+        tvSatelliteIcon = findViewById(R.id.tvSatelliteIcon)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
@@ -138,7 +143,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
-        findViewById<FloatingActionButton>(R.id.btnLayers).setOnClickListener {
+        // NAYA SATELLITE BUTTON LOGIC
+        btnSatellite.setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
                     map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
@@ -147,6 +153,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
+                    // Navigation Mode me wapas aane par icon badlo
+                    tvSatelliteIcon.text = "🛰"
+                    btnSatellite.setCardBackgroundColor(Color.WHITE)
                 } else {
                     map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
                         currentStyle = style
@@ -154,6 +163,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
+                    // Satellite Mode ON hone par icon badlo (Map icon dikhao)
+                    tvSatelliteIcon.text = "🗺️"
+                    btnSatellite.setCardBackgroundColor(Color.parseColor("#E3F2FD"))
                 }
             }
         }
@@ -417,12 +429,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         mapView.getMapAsync { map ->
             mapLibreMap = map
             
-            // NAYA FIX: Compass ko code ke through Left side me shift kar diya
+            // MapLibre ka Logo aur Attribution hata diya
+            map.uiSettings.isLogoEnabled = false
+            map.uiSettings.isAttributionEnabled = false
+            
+            // Compass ko Top-Right me set kiya (kuki wahan tumne "compass" likha tha)
             map.uiSettings.isCompassEnabled = true
-            map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.START)
+            map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
             val density = resources.displayMetrics.density
             val marginPx = (16 * density).toInt()
-            val topMarginPx = (100 * density).toInt() // Status bar ke thoda niche
+            val topMarginPx = (80 * density).toInt() // Thoda niche taaki satellite button se na takraye
             map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
             
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
