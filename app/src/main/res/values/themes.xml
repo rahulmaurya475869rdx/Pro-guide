@@ -1,3 +1,4 @@
 <resources>
-    <style name="Theme.ProGuide" parent="Theme.AppCompat.Light.NoActionBar" />
+    <!-- Theme.AppCompat ki jagah Theme.MaterialComponents kar diya -->
+    <style name="Theme.ProGuide" parent="Theme.MaterialComponents.Light.NoActionBar" />
 </resources>
