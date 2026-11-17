@@ -15,7 +15,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location // IMPORTANT: Ye import add kiya hai
+import android.location.Location
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -258,7 +258,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
                 sensorManager.unregisterListener(this)
-                mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0f))
+                // FIXED: 0f ko 0.0 kar diya kyunki bearingTo Double expect karta hai
+                mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0.0))
                 Toast.makeText(this@MainActivity, "Compass Mode OFF", Toast.LENGTH_SHORT).show()
             }
         }
@@ -382,7 +383,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // FIXED: Android ka built-in Location system use kar rahe hain (No Math.sin/cos)
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
         val startLoc = Location("start").apply { latitude = lat1; longitude = lon1 }
         val endLoc = Location("end").apply { latitude = lat2; longitude = lon2 }
@@ -440,6 +440,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         val userLoc = LatLng(location.latitude, location.longitude)
                         
                         if (isFirstLocationFix && mapLibreMap != null) {
+                            // FIXED: zoom aur tilt me .0 lagaya hai taaki Double ban sake
                             val pos = CameraPosition.Builder().target(userLoc).zoom(16.0).tilt(50.0).build()
                             mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
                             isFirstLocationFix = false
