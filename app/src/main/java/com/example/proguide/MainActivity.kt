@@ -3,6 +3,7 @@ package com.example.proguide
 import android.Manifest
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
@@ -16,6 +17,7 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Looper
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.Switch
@@ -102,7 +104,6 @@ class MainActivity : AppCompatActivity() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
 
-        // Initial Setup (Red dots, no pulse)
         updateStatusUI(dotGps, pulseGps, "#F44336")
         updateStatusUI(dotInternet, pulseInternet, "#F44336")
 
@@ -115,7 +116,6 @@ class MainActivity : AppCompatActivity() {
             startPulseAnimations() 
         }
 
-        // Buttons
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
@@ -153,49 +153,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Ripple Pulse Animation for both GPS and Internet
+    // Naya Fix: Ripple Animation jo andar se bahar jayegi
     private fun startPulseAnimations() {
         pulseGps.visibility = View.VISIBLE
         pulseInternet.visibility = View.VISIBLE
         
-        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 2.5f)
-        val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 2.5f)
-        val alphaUp = PropertyValuesHolder.ofFloat(View.ALPHA, 0.8f, 0f)
+        // Ghera chote size se bada hoga
+        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 3f)
+        val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 3f)
         
-        val scaleDown = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1f)
-        val scaleDownY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1f)
-        val alphaDown = PropertyValuesHolder.ofFloat(View.ALPHA, 0.8f, 0.8f)
+        // Ghera fade out hoga (0.6 se 0.0)
+        val fadeOut = PropertyValuesHolder.ofFloat(View.ALPHA, 0.6f, 0f)
 
-        // GPS Pulse Animator
-        val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(
-            pulseGps, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
-        )
+        val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseGps, scaleUp, scaleUpY, fadeOut)
         gpsAnimator.duration = 1500
-        gpsAnimator.repeatCount = ObjectAnimator.INFINITE
+        gpsAnimator.repeatCount = ValueAnimator.INFINITE
+        gpsAnimator.interpolator = AccelerateDecelerateInterpolator()
         gpsAnimator.start()
 
-        // Internet Pulse Animator
-        val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(
-            pulseInternet, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
-        )
+        val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseInternet, scaleUp, scaleUpY, fadeOut)
         internetAnimator.duration = 1500
-        internetAnimator.repeatCount = ObjectAnimator.INFINITE
+        internetAnimator.repeatCount = ValueAnimator.INFINITE
+        internetAnimator.interpolator = AccelerateDecelerateInterpolator()
         internetAnimator.start()
     }
 
-    // Naya function: Dot aur Pulse ka color ek sath update karega
     private fun updateStatusUI(dotView: View, pulseView: View, colorHex: String) {
-        // Dot (Solid Center)
         val dotDrawable = GradientDrawable()
         dotDrawable.shape = GradientDrawable.OVAL
         dotDrawable.setColor(Color.parseColor(colorHex))
         dotView.background = dotDrawable
 
-        // Pulse (Translucent Outer Circle)
         val pulseDrawable = GradientDrawable()
         pulseDrawable.shape = GradientDrawable.OVAL
         pulseDrawable.setColor(Color.parseColor(colorHex))
-        pulseDrawable.alpha = 120 // Thoda transparent
+        // Alpha ab animation handle karega, yahan hum ise thoda visible rakhenge
+        pulseDrawable.alpha = 150 
         pulseView.background = pulseDrawable
     }
 
@@ -373,7 +366,6 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // Naya: updateStatusUI call kar rahe hain jo color badlega
                     when {
                         accuracy < 10.0 -> { 
                             tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
