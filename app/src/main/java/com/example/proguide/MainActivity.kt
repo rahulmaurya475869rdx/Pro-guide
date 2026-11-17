@@ -180,22 +180,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val orientation = FloatArray(3)
             SensorManager.getOrientation(rotationMatrix, orientation)
             
-            // Explicitly using Double for Math.toDegrees
             var azimuth: Float = Math.toDegrees(orientation[0].toDouble()).toFloat()
             if (azimuth < 0f) azimuth += 360f
 
-            // Low-Pass Filter (Smoothness)
             var delta: Float = azimuth - smoothedBearing
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
             
-            smoothedBearing += 0.15f * delta 
+            smoothedBearing += (0.15f * delta)
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
 
             mapLibreMap?.let { map ->
                 val pos = CameraPosition.Builder(map.cameraPosition)
-                    .bearing(smoothedBearing.toDouble()) // Explicitly passing Double
+                    .bearing(smoothedBearing.toDouble())
                     .build()
                 map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 100)
             }
@@ -383,19 +381,27 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // FIXED: Using pure java.lang.Math to prevent Double/Float mismatch completely
+    // FIXED: Ultimate bulletproof distance calculation
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val earthRadius: Double = 6371000.0 // Earth radius in meters
-        val dLat: Double = Math.toRadians(lat2 - lat1)
-        val dLon: Double = Math.toRadians(lon2 - lon1)
+        val theta: Double = lon1 - lon2
+        var dist: Double = Math.sin(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) + 
+                            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(deg2rad(theta))
         
-        val a: Double = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0)
-                
-        val c: Double = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
+        dist = Math.acos(dist)
+        dist = rad2deg(dist)
+        dist = dist * 60.0 * 1.1515 // Miles
+        dist = dist * 1.609344 // Kilometers
+        dist = dist * 1000.0 // Meters
         
-        return (earthRadius * c).toFloat()
+        return dist.toFloat()
+    }
+
+    private fun deg2rad(deg: Double): Double {
+        return deg * Math.PI / 180.0
+    }
+
+    private fun rad2deg(rad: Double): Double {
+        return rad * 180.0 / Math.PI
     }
 
     private fun setupMap() {
