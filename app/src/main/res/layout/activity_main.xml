@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:mapLibre="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!-- Yahan se mapLibre attributes hata diye gaye hain -->
     <org.maplibre.android.maps.MapView
         android:id="@+id/mapView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        mapLibre:maplibre_uiCompassEnabled="true"
-        mapLibre:maplibre_uiCompassGravity="top|start"
-        mapLibre:maplibre_uiCompassMargins="16dp,100dp,16dp,16dp" />
+        android:layout_height="match_parent" />
 
     <!-- Status Panel -->
     <LinearLayout
