@@ -22,6 +22,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Looper
+import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.LinearLayout
@@ -415,6 +416,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun setupMap() {
         mapView.getMapAsync { map ->
             mapLibreMap = map
+            
+            // NAYA FIX: Compass ko code ke through Left side me shift kar diya
+            map.uiSettings.isCompassEnabled = true
+            map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.START)
+            val density = resources.displayMetrics.density
+            val marginPx = (16 * density).toInt()
+            val topMarginPx = (100 * density).toInt() // Status bar ke thoda niche
+            map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
+            
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
                 setupRouteLayer(style)
