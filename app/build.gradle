@@ -1,8 +1,39 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.example.proguide'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.proguide"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
 dependencies {
-    // MapLibre SDK ko 11.13.5 par update karo
+    // MapLibre SDK (11.13.5 version)
     implementation 'org.maplibre.gl:android-sdk:11.13.5'
 
-    // Location services
+    // Location services (GPS tracking)
     implementation 'com.google.android.gms:play-services-location:21.0.1'
 
     // Basic Android dependencies
