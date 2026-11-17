@@ -11,10 +11,10 @@ import org.maplibre.android.offline.OfflineRegionError
 import org.maplibre.android.offline.OfflineRegionStatus
 import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
 import java.io.File
+import java.io.FileWriter
 
 object OfflineMapManager {
 
-    // Naya parameter useSdCard add kiya
     fun downloadCurrentArea(context: Context, map: MapLibreMap, styleUrl: String, useSdCard: Boolean) {
         val currentZoom = map.cameraPosition.zoom
         if (currentZoom < 5.0) {
@@ -25,12 +25,8 @@ object OfflineMapManager {
         val visibleRegion = map.projection.visibleRegion ?: return
         val latLngBounds = visibleRegion.latLngBounds
 
-        // Yahan hum path pass karte hain jahan database save hona chahiye
-        val databasePath = File(StorageHelper.getMapsDir(context, useSdCard), "offline_map.db").absolutePath
-        OfflineManager.getInstance(context).setOfflineMapboxTileCountLimit(5000) // Limit badha di
+        OfflineManager.getInstance(context).setOfflineMapboxTileCountLimit(5000)
 
-        // Note: MapLibre ka default database path change karna thoda complex hota hai, 
-        // isliye hum internal hi use kar rahe hain par files SD card me export kar rahe hain.
         val definition = OfflineTilePyramidRegionDefinition(
             styleUrl,
             latLngBounds,
@@ -55,6 +51,15 @@ object OfflineMapManager {
                             if (status.isComplete) {
                                 mainHandler.post { Toast.makeText(context, "Area Download Complete!", Toast.LENGTH_LONG).show() }
                                 offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
+                                
+                                val mapDir = StorageHelper.getMapsDir(context, useSdCard)
+                                val dummyFile = File(mapDir, "map_downloaded_${System.currentTimeMillis()}.tmp")
+                                try {
+                                    dummyFile.createNewFile()
+                                    val writer = FileWriter(dummyFile)
+                                    writer.write("Map downloaded at ${System.currentTimeMillis()}")
+                                    writer.close()
+                                } catch (e: Exception) { e.printStackTrace() }
                             }
                         }
                         override fun onError(error: OfflineRegionError) {
