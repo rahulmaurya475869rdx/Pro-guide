@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // MAPLIBRE INITIALIZATION FIX: API key ki zaroorat nahi hoti yahan
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
@@ -143,7 +144,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
 
-        // NAYA SATELLITE BUTTON LOGIC
         btnSatellite.setOnClickListener {
             mapLibreMap?.let { map ->
                 if (isSatelliteMode) {
@@ -153,7 +153,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
-                    // Navigation Mode me wapas aane par icon badlo
                     tvSatelliteIcon.text = "🛰"
                     btnSatellite.setCardBackgroundColor(Color.WHITE)
                 } else {
@@ -163,7 +162,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
-                    // Satellite Mode ON hone par icon badlo (Map icon dikhao)
                     tvSatelliteIcon.text = "🗺️"
                     btnSatellite.setCardBackgroundColor(Color.parseColor("#E3F2FD"))
                 }
@@ -429,16 +427,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         mapView.getMapAsync { map ->
             mapLibreMap = map
             
-            // MapLibre ka Logo aur Attribution hata diya
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
             
-            // Compass ko Top-Right me set kiya (kuki wahan tumne "compass" likha tha)
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
             val density = resources.displayMetrics.density
             val marginPx = (16 * density).toInt()
-            val topMarginPx = (80 * density).toInt() // Thoda niche taaki satellite button se na takraye
+            val topMarginPx = (80 * density).toInt()
             map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
             
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
