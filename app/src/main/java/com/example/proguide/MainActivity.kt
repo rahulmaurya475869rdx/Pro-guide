@@ -195,7 +195,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
             mapLibreMap?.let { map ->
                 val pos = CameraPosition.Builder(map.cameraPosition)
-                    .bearing(smoothedBearing.toDouble()) // FIXED: Converted to Double
+                    .bearing(smoothedBearing.toDouble()) 
                     .build()
                 map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 100)
             }
@@ -383,6 +383,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    // FIXED: Explicitly used Double math
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
         val r = 6371000.0
         val latDistance = Math.toRadians(lat2 - lat1)
@@ -390,7 +391,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val a = Math.sin(latDistance / 2.0) * Math.sin(latDistance / 2.0) +
                 Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
                 Math.sin(lonDistance / 2.0) * Math.sin(lonDistance / 2.0)
-        val c = 2.0 * Math.atan2(sqrt(a), sqrt(1.0 - a))
+        
+        val c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
         return (r * c).toFloat()
     }
 
@@ -413,7 +415,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun startLocationUpdates() {
         if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
 
-        // FIXED: Used 2000L and 1000L
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
             .setMinUpdateIntervalMillis(1000L)
             .build()
@@ -423,7 +424,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // FIXED: Used 10f, 20f, 50f
                     when {
                         accuracy < 10f -> { 
                             tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
@@ -443,7 +443,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         }
                     }
 
-                    if (accuracy <= 30f) { // FIXED: 30f
+                    if (accuracy <= 30f) { 
                         val userLoc = LatLng(location.latitude, location.longitude)
                         
                         if (isFirstLocationFix && mapLibreMap != null) {
@@ -463,7 +463,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                 )
                                 if (dist > getMinDistance()) shouldRecord = true
                                 if (dist > 2f) {
-                                    val bearingChange = abs(location.bearing - lastRecordedBearing)
+                                    // FIXED: Explicitly used Math.abs for Float
+                                    val bearingChange = Math.abs(location.bearing - lastRecordedBearing)
                                     if (bearingChange > 30f) shouldRecord = true
                                 }
                             }
@@ -481,7 +482,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             for (feature in recordedPoints) {
                                 val p = feature.geometry() as Point
                                 val dist = calculateDistance(p.latitude(), p.longitude(), userLoc.latitude, userLoc.longitude)
-                                if (dist < 40f) { // FIXED: 40f
+                                if (dist < 40f) { 
                                     isOffRoute = false
                                     break
                                 }
