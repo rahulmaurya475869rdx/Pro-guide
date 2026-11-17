@@ -15,6 +15,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -381,27 +382,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // FIXED: Ultimate bulletproof distance calculation
+    // ULTIMATE FIX: Using Android's built-in Location.distanceBetween
+    // This avoids all Math.sin/Math.cos Float/Double errors completely!
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val theta: Double = lon1 - lon2
-        var dist: Double = Math.sin(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) + 
-                            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(deg2rad(theta))
-        
-        dist = Math.acos(dist)
-        dist = rad2deg(dist)
-        dist = dist * 60.0 * 1.1515 // Miles
-        dist = dist * 1.609344 // Kilometers
-        dist = dist * 1000.0 // Meters
-        
-        return dist.toFloat()
-    }
-
-    private fun deg2rad(deg: Double): Double {
-        return deg * Math.PI / 180.0
-    }
-
-    private fun rad2deg(rad: Double): Double {
-        return rad * 180.0 / Math.PI
+        val results = FloatArray(1)
+        Location.distanceBetween(lat1, lon1, lat2, lon2, results)
+        return results[0]
     }
 
     private fun setupMap() {
