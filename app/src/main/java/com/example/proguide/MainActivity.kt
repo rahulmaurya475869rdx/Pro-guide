@@ -7,9 +7,14 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -50,7 +55,7 @@ import org.maplibre.geojson.Point
 import kotlin.math.abs
 import kotlin.math.sqrt
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var mapView: MapView
     private var mapLibreMap: MapLibreMap? = null
@@ -69,14 +74,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pulseInternet: View
     
     private var isFirstLocationFix = true
+    
+    // Preferences
+    private lateinit var prefs: SharedPreferences
     private var isCompassModeEnabled = false
+    private var useSdCard = false
 
+    // Smooth Compass Sensor
+    private lateinit var sensorManager: SensorManager
+    private var rotationVectorSensor: Sensor? = null
+    private var smoothedBearing = 0f
+
+    // Recording Variables
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
-    private var useSdCard = false
     private val recordedPoints = mutableListOf<Feature>()
-    
     private var lastRecordedLatLng: LatLng? = null
     private var lastRecordedBearing: Float = 0f
     private var lastOffRouteTime: Long = 0
@@ -89,6 +102,10 @@ class MainActivity : AppCompatActivity() {
         
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
+
+        prefs = getSharedPreferences("ProGuidePrefs", Context.MODE_PRIVATE)
+        isCompassModeEnabled = prefs.getBoolean("compass_mode", false)
+        useSdCard = prefs.getBoolean("use_sd_card", false)
 
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
@@ -103,6 +120,9 @@ class MainActivity : AppCompatActivity() {
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         updateStatusUI(dotGps, pulseGps, "#F44336")
         updateStatusUI(dotInternet, pulseInternet, "#F44336")
@@ -153,16 +173,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Naya Fix: Ripple Animation jo andar se bahar jayegi
+    // SENSOR LOGIC: Smooth Compass
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR && isCompassModeEnabled) {
+            val rotationMatrix = FloatArray(9)
+            SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+            val orientation = FloatArray(3)
+            SensorManager.getOrientation(rotationMatrix, orientation)
+            
+            var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            if (azimuth < 0) azimuth += 360f
+
+            // Low-Pass Filter (Smoothness)
+            var delta = azimuth - smoothedBearing
+            if (delta > 180) delta -= 360
+            if (delta < -180) delta += 360
+            
+            smoothedBearing += 0.15f * delta 
+            if (smoothedBearing < 0) smoothedBearing += 360
+            if (smoothedBearing >= 360) smoothedBearing -= 360
+
+            mapLibreMap?.let { map ->
+                val pos = CameraPosition.Builder(map.cameraPosition)
+                    .bearing(smoothedBearing)
+                    .build()
+                map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 100)
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
     private fun startPulseAnimations() {
         pulseGps.visibility = View.VISIBLE
         pulseInternet.visibility = View.VISIBLE
         
-        // Ghera chote size se bada hoga
         val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 3f)
         val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 3f)
-        
-        // Ghera fade out hoga (0.6 se 0.0)
         val fadeOut = PropertyValuesHolder.ofFloat(View.ALPHA, 0.6f, 0f)
 
         val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseGps, scaleUp, scaleUpY, fadeOut)
@@ -187,7 +234,6 @@ class MainActivity : AppCompatActivity() {
         val pulseDrawable = GradientDrawable()
         pulseDrawable.shape = GradientDrawable.OVAL
         pulseDrawable.setColor(Color.parseColor(colorHex))
-        // Alpha ab animation handle karega, yahan hum ise thoda visible rakhenge
         pulseDrawable.alpha = 150 
         pulseView.background = pulseDrawable
     }
@@ -206,11 +252,15 @@ class MainActivity : AppCompatActivity() {
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
             isCompassModeEnabled = isChecked
+            prefs.edit().putBoolean("compass_mode", isChecked).apply()
+            
             if (isChecked) {
-                mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING_COMPASS
-                Toast.makeText(this@MainActivity, "Map will rotate", Toast.LENGTH_SHORT).show()
+                rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+                Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
-                mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
+                sensorManager.unregisterListener(this)
+                mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0f))
+                Toast.makeText(this@MainActivity, "Compass Mode OFF", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -218,10 +268,12 @@ class MainActivity : AppCompatActivity() {
         
         radioInternal.setOnClickListener { 
             useSdCard = false
+            prefs.edit().putBoolean("use_sd_card", false).apply()
             Toast.makeText(this@MainActivity, "Internal Selected", Toast.LENGTH_SHORT).show() 
         }
         radioSdCard.setOnClickListener { 
             useSdCard = true
+            prefs.edit().putBoolean("use_sd_card", true).apply()
             Toast.makeText(this@MainActivity, "SD Card Selected", Toast.LENGTH_SHORT).show() 
         }
 
@@ -277,7 +329,7 @@ class MainActivity : AppCompatActivity() {
         
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
-        Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
         mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
     }
 
@@ -286,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
         RouteFileManager.compressCurrentRoute()
-        Toast.makeText(this@MainActivity, "Saved & Compressed", Toast.LENGTH_LONG).show()
+        Toast.makeText(this@MainActivity, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
     }
 
     private fun startReturning() {
@@ -349,6 +401,10 @@ class MainActivity : AppCompatActivity() {
                 currentStyle = style
                 setupRouteLayer(style)
                 LocationHelper.enableLocation(this@MainActivity, map, style)
+                
+                if (isCompassModeEnabled) {
+                    rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+                }
             }
         }
     }
@@ -488,9 +544,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        mapView.onResume()
+        if (isCompassModeEnabled) {
+            rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mapView.onPause()
+        sensorManager.unregisterListener(this)
+    }
+
     override fun onStart() { super.onStart(); mapView.onStart() }
-    override fun onResume() { super.onResume(); mapView.onResume() }
-    override fun onPause() { super.onPause(); mapView.onPause() }
     override fun onStop() { super.onStop(); mapView.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onDestroy() { super.onDestroy(); mapView.onDestroy() }
