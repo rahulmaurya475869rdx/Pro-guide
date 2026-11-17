@@ -53,6 +53,9 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity(), SensorEventListener {
@@ -182,16 +185,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             SensorManager.getOrientation(rotationMatrix, orientation)
             
             var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
-            if (azimuth < 0) azimuth += 360f
+            if (azimuth < 0f) azimuth += 360f
 
             // Low-Pass Filter (Smoothness)
             var delta = azimuth - smoothedBearing
-            if (delta > 180) delta -= 360
-            if (delta < -180) delta += 360
+            if (delta > 180f) delta -= 360f
+            if (delta < -180f) delta += 360f
             
             smoothedBearing += 0.15f * delta 
-            if (smoothedBearing < 0) smoothedBearing += 360
-            if (smoothedBearing >= 360) smoothedBearing -= 360
+            if (smoothedBearing < 0f) smoothedBearing += 360f
+            if (smoothedBearing >= 360f) smoothedBearing -= 360f
 
             mapLibreMap?.let { map ->
                 val pos = CameraPosition.Builder(map.cameraPosition)
@@ -383,16 +386,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // FIXED: Explicitly used Double math
+    // FIXED: Explicitly used kotlin.math.* to avoid Double/Float mismatch
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val r = 6371000.0
-        val latDistance = Math.toRadians(lat2 - lat1)
-        val lonDistance = Math.toRadians(lon2 - lon1)
-        val a = Math.sin(latDistance / 2.0) * Math.sin(latDistance / 2.0) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                Math.sin(lonDistance / 2.0) * Math.sin(lonDistance / 2.0)
+        val r = 6371000.0 // Earth radius in meters
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
         
-        val c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
+        val a = sin(dLat / 2.0) * sin(dLat / 2.0) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2.0) * sin(dLon / 2.0)
+        
+        val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
         return (r * c).toFloat()
     }
 
@@ -463,8 +467,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                 )
                                 if (dist > getMinDistance()) shouldRecord = true
                                 if (dist > 2f) {
-                                    // FIXED: Explicitly used Math.abs for Float
-                                    val bearingChange = Math.abs(location.bearing - lastRecordedBearing)
+                                    val bearingChange = abs(location.bearing - lastRecordedBearing)
                                     if (bearingChange > 30f) shouldRecord = true
                                 }
                             }
