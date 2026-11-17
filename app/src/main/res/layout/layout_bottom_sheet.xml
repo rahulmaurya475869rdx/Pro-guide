@@ -15,7 +15,6 @@
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
 
-    <!-- Compass Mode Toggle -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -74,7 +73,6 @@
         android:layout_marginTop="8dp"
         android:layout_marginBottom="16dp"/>
 
-    <!-- Download Button -->
     <LinearLayout
         android:id="@+id/btnDownloadMap"
         android:layout_width="match_parent"
