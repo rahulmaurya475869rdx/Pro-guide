@@ -11,9 +11,9 @@
         android:layout_height="match_parent"
         mapLibre:maplibre_uiCompassEnabled="true"
         mapLibre:maplibre_uiCompassGravity="top|start"
-        mapLibre:maplibre_uiCompassMargins="16dp,80dp,16dp,16dp" />
+        mapLibre:maplibre_uiCompassMargins="16dp,100dp,16dp,16dp" />
 
-    <!-- Status Panel (Same as before) -->
+    <!-- Status Panel -->
     <LinearLayout
         android:id="@+id/statusPanel"
         android:layout_width="wrap_content"
@@ -25,6 +25,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
+        <!-- GPS Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -76,6 +77,7 @@
             </FrameLayout>
         </LinearLayout>
 
+        <!-- Internet Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
