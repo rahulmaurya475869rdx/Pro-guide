@@ -98,4 +98,31 @@
             android:layout_marginStart="12dp"/>
     </LinearLayout>
 
+    <!-- NAYA DELETE BUTTON -->
+    <LinearLayout
+        android:id="@+id/btnDeleteData"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:layout_marginTop="12dp"
+        android:background="#4D0000">
+        
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_menu_delete"
+            app:tint="#FF5252"
+            xmlns:app="http://schemas.android.com/apk/res-auto"/>
+            
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Delete All Routes & Maps"
+            android:textColor="#FF5252"
+            android:textSize="16sp"
+            android:layout_marginStart="12dp"/>
+    </LinearLayout>
+
 </LinearLayout>
