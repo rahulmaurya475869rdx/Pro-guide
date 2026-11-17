@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Status Panel (No Background, Floating Text) -->
+    <!-- Status Panel -->
     <LinearLayout
         android:id="@+id/statusPanel"
         android:layout_width="wrap_content"
@@ -31,11 +31,13 @@
             android:clipToPadding="false"
             android:paddingBottom="8dp">
             
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:src="@android:drawable/ic_menu_mylocation"
-                app:tint="#FFFFFF" 
+            <!-- NAYA: Satellite Icon -->
+            <TextView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:text="🛰"
+                android:textSize="18sp"
+                android:gravity="center"
                 android:shadowColor="#000000" android:shadowDx="1" android:shadowDy="1" android:shadowRadius="2"/>
 
             <TextView
@@ -49,7 +51,7 @@
                 android:textStyle="bold"
                 android:shadowColor="#000000" android:shadowDx="1.5" android:shadowDy="1.5" android:shadowRadius="3" />
 
-            <!-- GPS Pulse Container (Size 48dp for wide ripple) -->
+            <!-- GPS Pulse Container -->
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
@@ -57,7 +59,6 @@
                 android:clipChildren="false"
                 android:clipToPadding="false">
                 
-                <!-- Pulse Circle (Starts at 12dp, expands to 34dp via code) -->
                 <View
                     android:id="@+id/pulseGps"
                     android:layout_width="12dp"
@@ -65,7 +66,6 @@
                     android:layout_gravity="center"
                     android:visibility="invisible" />
                 
-                <!-- Center Solid Dot -->
                 <View
                     android:id="@+id/dotGps"
                     android:layout_width="12dp"
