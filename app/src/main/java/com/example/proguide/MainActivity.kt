@@ -188,7 +188,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
             
-            smoothedBearing += (0.15f * delta)
+            // SMOOTHING: 0.15f se 0.08f kar diya taaki map butter-smooth ghoome
+            smoothedBearing += (0.08f * delta)
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
 
@@ -196,7 +197,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 val pos = CameraPosition.Builder(map.cameraPosition)
                     .bearing(smoothedBearing.toDouble())
                     .build()
-                map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 100)
+                // ANIMATION: 100ms se 250ms kar diya taaki jerk na ho
+                map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 250)
             }
         }
     }
@@ -254,11 +256,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             prefs.edit().putBoolean("compass_mode", isChecked).apply()
             
             if (isChecked) {
-                rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+                // GPS tracking band karo taaki sensor aaram se ghoom sake
+                mapLibreMap?.locationComponent?.cameraMode = CameraMode.NONE
+                // SENSOR_DELAY_GAME ki jagah SENSOR_DELAY_UI kiya taaki smooth ho
+                rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
                 Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
                 sensorManager.unregisterListener(this)
-                // FIXED: 0f ko 0.0 kar diya kyunki bearingTo Double expect karta hai
+                // Wapas GPS tracking on kar do
+                mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
                 mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0.0))
                 Toast.makeText(this@MainActivity, "Compass Mode OFF", Toast.LENGTH_SHORT).show()
             }
@@ -330,7 +336,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
         Toast.makeText(this@MainActivity, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
-        mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
+        
+        if (!isCompassModeEnabled) {
+            mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
+        }
     }
 
     private fun stopRecording() {
@@ -398,7 +407,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 LocationHelper.enableLocation(this@MainActivity, map, style)
                 
                 if (isCompassModeEnabled) {
-                    rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+                    map.locationComponent.cameraMode = CameraMode.NONE
+                    rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
                 }
             }
         }
@@ -440,7 +450,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         val userLoc = LatLng(location.latitude, location.longitude)
                         
                         if (isFirstLocationFix && mapLibreMap != null) {
-                            // FIXED: zoom aur tilt me .0 lagaya hai taaki Double ban sake
                             val pos = CameraPosition.Builder().target(userLoc).zoom(16.0).tilt(50.0).build()
                             mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
                             isFirstLocationFix = false
@@ -546,7 +555,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         super.onResume()
         mapView.onResume()
         if (isCompassModeEnabled) {
-            rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+            mapLibreMap?.locationComponent?.cameraMode = CameraMode.NONE
+            rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
         }
     }
 
