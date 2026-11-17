@@ -4,22 +4,22 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Yahan se mapLibre attributes hata diye gaye hain -->
     <org.maplibre.android.maps.MapView
         android:id="@+id/mapView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Status Panel -->
+    <!-- Status Panel (Ab ye Bottom-Left me hai) -->
     <LinearLayout
         android:id="@+id/statusPanel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="24dp"
         android:orientation="vertical"
         android:clipChildren="false"
         android:clipToPadding="false"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
         <!-- GPS Row -->
@@ -125,30 +125,39 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Layers Button -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/btnLayers"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+    <!-- NAYA SATELLITE BUTTON (Circle with 🛰) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/btnSatellite"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
-        android:src="@android:drawable/ic_menu_mapmode"
-        app:backgroundTint="#FFFFFF"
-        app:tint="#2196F3" 
+        app:cardCornerRadius="28dp"
+        app:cardElevation="6dp"
+        app:cardBackgroundColor="#FFFFFF"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
+        
+        <TextView
+            android:id="@+id/tvSatelliteIcon"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="🛰"
+            android:textSize="28sp" />
+    </com.google.android.material.card.MaterialCardView>
 
     <!-- Menu Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMenu"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="12dp"
         android:layout_marginEnd="16dp"
         android:src="@android:drawable/ic_menu_sort_by_size"
         app:backgroundTint="#FFFFFF"
         app:tint="#000000"
-        app:layout_constraintTop_toBottomOf="@+id/btnLayers"
+        app:layout_constraintTop_toBottomOf="@+id/btnSatellite"
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Return Button -->
