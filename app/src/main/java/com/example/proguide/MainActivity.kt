@@ -64,11 +64,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dotGps: View
     private lateinit var pulseGps: View
     private lateinit var dotInternet: View
+    private lateinit var pulseInternet: View
     
     private var isFirstLocationFix = true
     private var isCompassModeEnabled = false
 
-    // --- RECORDING VARIABLES ---
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
@@ -88,33 +88,34 @@ class MainActivity : AppCompatActivity() {
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
-        // Initialize Views
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
         dotGps = findViewById(R.id.dotGps)
         pulseGps = findViewById(R.id.pulseGps)
         dotInternet = findViewById(R.id.dotInternet)
+        pulseInternet = findViewById(R.id.pulseInternet)
+        
         btnRecord = findViewById(R.id.btnRecord)
         btnReturn = findViewById(R.id.btnReturn)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
 
-        setupCircleDot(dotGps, "#F44336")
-        setupCircleDot(dotInternet, "#F44336")
+        // Initial Setup (Red dots, no pulse)
+        updateStatusUI(dotGps, pulseGps, "#F44336")
+        updateStatusUI(dotInternet, pulseInternet, "#F44336")
 
-        // Permissions Check
         if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
         } else {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
-            startPulseAnimation() 
+            startPulseAnimations() 
         }
 
-        // Button Listeners
+        // Buttons
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
         }
@@ -152,31 +153,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Pulse Animation (Dhadkan)
-    private fun startPulseAnimation() {
+    // Ripple Pulse Animation for both GPS and Internet
+    private fun startPulseAnimations() {
         pulseGps.visibility = View.VISIBLE
+        pulseInternet.visibility = View.VISIBLE
         
-        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.5f)
-        val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.5f)
-        val alphaUp = PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.3f)
+        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 2.5f)
+        val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 2.5f)
+        val alphaUp = PropertyValuesHolder.ofFloat(View.ALPHA, 0.8f, 0f)
         
-        val scaleDown = PropertyValuesHolder.ofFloat(View.SCALE_X, 1.5f, 1f)
-        val scaleDownY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.5f, 1f)
-        val alphaDown = PropertyValuesHolder.ofFloat(View.ALPHA, 0.3f, 1f)
+        val scaleDown = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1f)
+        val scaleDownY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1f)
+        val alphaDown = PropertyValuesHolder.ofFloat(View.ALPHA, 0.8f, 0.8f)
 
-        val pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(
+        // GPS Pulse Animator
+        val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(
             pulseGps, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
         )
-        pulseAnimator.duration = 1500 
-        pulseAnimator.repeatCount = ObjectAnimator.INFINITE
-        pulseAnimator.start()
+        gpsAnimator.duration = 1500
+        gpsAnimator.repeatCount = ObjectAnimator.INFINITE
+        gpsAnimator.start()
+
+        // Internet Pulse Animator
+        val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(
+            pulseInternet, scaleUp, scaleUpY, alphaUp, scaleDown, scaleDownY, alphaDown
+        )
+        internetAnimator.duration = 1500
+        internetAnimator.repeatCount = ObjectAnimator.INFINITE
+        internetAnimator.start()
     }
 
-    // Google Maps Style Bottom Sheet Menu
+    // Naya function: Dot aur Pulse ka color ek sath update karega
+    private fun updateStatusUI(dotView: View, pulseView: View, colorHex: String) {
+        // Dot (Solid Center)
+        val dotDrawable = GradientDrawable()
+        dotDrawable.shape = GradientDrawable.OVAL
+        dotDrawable.setColor(Color.parseColor(colorHex))
+        dotView.background = dotDrawable
+
+        // Pulse (Translucent Outer Circle)
+        val pulseDrawable = GradientDrawable()
+        pulseDrawable.shape = GradientDrawable.OVAL
+        pulseDrawable.setColor(Color.parseColor(colorHex))
+        pulseDrawable.alpha = 120 // Thoda transparent
+        pulseView.background = pulseDrawable
+    }
+
     private fun showBottomSheetMenu() {
         val dialog = BottomSheetDialog(this@MainActivity)
-        
-        // Yahan Overload error fix kiya gaya hai (as View)
         val view = layoutInflater.inflate(R.layout.layout_bottom_sheet, null) as View
         dialog.setContentView(view)
 
@@ -191,7 +215,7 @@ class MainActivity : AppCompatActivity() {
             isCompassModeEnabled = isChecked
             if (isChecked) {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING_COMPASS
-                Toast.makeText(this@MainActivity, "Map will rotate with device", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Map will rotate", Toast.LENGTH_SHORT).show()
             } else {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
             }
@@ -219,7 +243,6 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
         }
-
         dialog.show()
     }
 
@@ -261,7 +284,7 @@ class MainActivity : AppCompatActivity() {
         
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
-        Toast.makeText(this@MainActivity, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
         mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
     }
 
@@ -270,7 +293,7 @@ class MainActivity : AppCompatActivity() {
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
         RouteFileManager.compressCurrentRoute()
-        Toast.makeText(this@MainActivity, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this@MainActivity, "Saved & Compressed", Toast.LENGTH_LONG).show()
     }
 
     private fun startReturning() {
@@ -326,13 +349,6 @@ class MainActivity : AppCompatActivity() {
         return (r * c).toFloat()
     }
 
-    private fun setupCircleDot(view: View, colorHex: String) {
-        val drawable = GradientDrawable()
-        drawable.shape = GradientDrawable.OVAL
-        drawable.setColor(Color.parseColor(colorHex))
-        view.background = drawable
-    }
-
     private fun setupMap() {
         mapView.getMapAsync { map ->
             mapLibreMap = map
@@ -357,12 +373,24 @@ class MainActivity : AppCompatActivity() {
                 for (location in locationResult.locations) {
                     val accuracy = location.accuracy
                     
-                    // Status Update
+                    // Naya: updateStatusUI call kar rahe hain jo color badlega
                     when {
-                        accuracy < 10.0 -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#4CAF50") }
-                        accuracy < 20.0 -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#2196F3") }
-                        accuracy < 50.0 -> { tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#FFC107") }
-                        else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; setupCircleDot(dotGps, "#F44336") }
+                        accuracy < 10.0 -> { 
+                            tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
+                            updateStatusUI(dotGps, pulseGps, "#4CAF50") 
+                        }
+                        accuracy < 20.0 -> { 
+                            tvGpsStatus.text = "Good (${accuracy.toInt()}m)"
+                            updateStatusUI(dotGps, pulseGps, "#2196F3") 
+                        }
+                        accuracy < 50.0 -> { 
+                            tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"
+                            updateStatusUI(dotGps, pulseGps, "#FFC107") 
+                        }
+                        else -> { 
+                            tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"
+                            updateStatusUI(dotGps, pulseGps, "#F44336") 
+                        }
                     }
 
                     if (accuracy <= 30.0) {
@@ -374,10 +402,8 @@ class MainActivity : AppCompatActivity() {
                             isFirstLocationFix = false
                         }
 
-                        // SMART RECORDING LOGIC (15m + Turn)
                         if (isRecording) {
                             var shouldRecord = false
-                            
                             if (lastRecordedLatLng == null) {
                                 shouldRecord = true
                             } else {
@@ -385,9 +411,7 @@ class MainActivity : AppCompatActivity() {
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
-                                
                                 if (dist > getMinDistance()) shouldRecord = true
-                                
                                 if (dist > 2f) {
                                     val bearingChange = abs(location.bearing - lastRecordedBearing)
                                     if (bearingChange > 30f) shouldRecord = true
@@ -395,14 +419,13 @@ class MainActivity : AppCompatActivity() {
                             }
 
                             if (shouldRecord) {
-                                addPointToRoute(userLoc, "#D500F9") // Purple
+                                addPointToRoute(userLoc, "#D500F9")
                                 lastRecordedLatLng = userLoc
                                 lastRecordedBearing = location.bearing
                                 RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
                             }
                         } 
                         
-                        // RETURN MODE LOGIC
                         if (isReturning) {
                             var isOffRoute = true
                             for (feature in recordedPoints) {
@@ -416,7 +439,7 @@ class MainActivity : AppCompatActivity() {
                             if (isOffRoute) {
                                 val currentTime = System.currentTimeMillis()
                                 if (currentTime - lastOffRouteTime > 10000) {
-                                    addPointToRoute(userLoc, "#FF1744") // Red
+                                    addPointToRoute(userLoc, "#FF1744")
                                     lastOffRouteTime = currentTime
                                 }
                             }
@@ -446,10 +469,10 @@ class MainActivity : AppCompatActivity() {
                     if (capabilities != null) {
                         if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
                             tvNetStatus.text = "WiFi"
-                            setupCircleDot(dotInternet, "#4CAF50")
+                            updateStatusUI(dotInternet, pulseInternet, "#4CAF50")
                         } else {
                             tvNetStatus.text = "Data"
-                            setupCircleDot(dotInternet, "#2196F3")
+                            updateStatusUI(dotInternet, pulseInternet, "#2196F3")
                         }
                     }
                 }
@@ -457,7 +480,7 @@ class MainActivity : AppCompatActivity() {
             override fun onLost(network: Network) {
                 runOnUiThread {
                     tvNetStatus.text = "Offline"
-                    setupCircleDot(dotInternet, "#F44336")
+                    updateStatusUI(dotInternet, pulseInternet, "#F44336")
                 }
             }
         })
@@ -469,7 +492,7 @@ class MainActivity : AppCompatActivity() {
             setupMap()
             startLocationUpdates()
             monitorInternetConnection()
-            startPulseAnimation()
+            startPulseAnimations()
         }
     }
 
