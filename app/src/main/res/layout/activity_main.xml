@@ -16,6 +16,8 @@
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
         android:orientation="vertical"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -25,7 +27,9 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingBottom="12dp">
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingBottom="8dp">
             
             <ImageView
                 android:layout_width="22dp"
@@ -45,24 +49,27 @@
                 android:textStyle="bold"
                 android:shadowColor="#000000" android:shadowDx="1.5" android:shadowDy="1.5" android:shadowRadius="3" />
 
-            <!-- GPS Pulse Container -->
+            <!-- GPS Pulse Container (Size 48dp for wide ripple) -->
             <FrameLayout
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:clipChildren="false">
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:clipChildren="false"
+                android:clipToPadding="false">
                 
+                <!-- Pulse Circle (Starts at 12dp, expands to 34dp via code) -->
                 <View
                     android:id="@+id/pulseGps"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
                     android:layout_gravity="center"
                     android:visibility="invisible" />
                 
+                <!-- Center Solid Dot -->
                 <View
                     android:id="@+id/dotGps"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_status_dot" />
             </FrameLayout>
@@ -73,7 +80,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:clipChildren="false"
+            android:clipToPadding="false">
             
             <ImageView
                 android:layout_width="22dp"
@@ -95,22 +104,23 @@
 
             <!-- Internet Pulse Container -->
             <FrameLayout
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:clipChildren="false">
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:clipChildren="false"
+                android:clipToPadding="false">
                 
                 <View
                     android:id="@+id/pulseInternet"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
                     android:layout_gravity="center"
                     android:visibility="invisible" />
                 
                 <View
                     android:id="@+id/dotInternet"
-                    android:layout_width="14dp"
-                    android:layout_height="14dp"
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_status_dot" />
             </FrameLayout>
