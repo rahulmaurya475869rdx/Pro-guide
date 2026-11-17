@@ -75,17 +75,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     
     private var isFirstLocationFix = true
     
-    // Preferences
     private lateinit var prefs: SharedPreferences
     private var isCompassModeEnabled = false
     private var useSdCard = false
 
-    // Smooth Compass Sensor
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
     private var smoothedBearing: Float = 0f
 
-    // Recording Variables
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
@@ -173,7 +170,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // SENSOR LOGIC: Smooth Compass
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR && isCompassModeEnabled) {
             val rotationMatrix = FloatArray(9)
@@ -188,7 +184,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
             
-            // SMOOTHING: 0.15f se 0.08f kar diya taaki map butter-smooth ghoome
             smoothedBearing += (0.08f * delta)
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
@@ -197,7 +192,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 val pos = CameraPosition.Builder(map.cameraPosition)
                     .bearing(smoothedBearing.toDouble())
                     .build()
-                // ANIMATION: 100ms se 250ms kar diya taaki jerk na ho
                 map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 250)
             }
         }
@@ -249,6 +243,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val radioSdCard = view.findViewById<RadioButton>(R.id.radioSdCard)
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
+        val btnDeleteData = view.findViewById<LinearLayout>(R.id.btnDeleteData)
 
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
@@ -256,14 +251,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             prefs.edit().putBoolean("compass_mode", isChecked).apply()
             
             if (isChecked) {
-                // GPS tracking band karo taaki sensor aaram se ghoom sake
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.NONE
-                // SENSOR_DELAY_GAME ki jagah SENSOR_DELAY_UI kiya taaki smooth ho
                 rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
                 Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
                 sensorManager.unregisterListener(this)
-                // Wapas GPS tracking on kar do
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
                 mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0.0))
                 Toast.makeText(this@MainActivity, "Compass Mode OFF", Toast.LENGTH_SHORT).show()
@@ -294,6 +286,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 dialog.dismiss()
             }
         }
+
+        btnDeleteData.setOnClickListener {
+            val builder = AlertDialog.Builder(this@MainActivity)
+            builder.setTitle("Delete Data?")
+            builder.setMessage("Kya aap sach me saare Routes aur Maps delete karna chahte hain?")
+            builder.setPositiveButton("Yes, Delete") { _, _ ->
+                val routesDeleted = StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
+                val mapsDeleted = StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                
+                if (routesDeleted && mapsDeleted) {
+                    Toast.makeText(this@MainActivity, "Storage Cleared Successfully!", Toast.LENGTH_SHORT).show()
+                    val newRSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
+                    val newMSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                    tvStorageInfo.text = "Routes: $newRSize | Maps: $newMSize"
+                } else {
+                    Toast.makeText(this@MainActivity, "Kuch files delete nahi ho payi!", Toast.LENGTH_SHORT).show()
+                }
+            }
+            builder.setNegativeButton("Cancel", null)
+            builder.show()
+        }
+        
         dialog.show()
     }
 
