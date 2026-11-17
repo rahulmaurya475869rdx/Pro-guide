@@ -53,10 +53,6 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity(), SensorEventListener {
 
@@ -86,7 +82,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Smooth Compass Sensor
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
-    private var smoothedBearing = 0f
+    private var smoothedBearing: Float = 0f
 
     // Recording Variables
     private var isRecording = false
@@ -184,11 +180,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val orientation = FloatArray(3)
             SensorManager.getOrientation(rotationMatrix, orientation)
             
-            var azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            // Explicitly using Double for Math.toDegrees
+            var azimuth: Float = Math.toDegrees(orientation[0].toDouble()).toFloat()
             if (azimuth < 0f) azimuth += 360f
 
             // Low-Pass Filter (Smoothness)
-            var delta = azimuth - smoothedBearing
+            var delta: Float = azimuth - smoothedBearing
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
             
@@ -198,7 +195,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
             mapLibreMap?.let { map ->
                 val pos = CameraPosition.Builder(map.cameraPosition)
-                    .bearing(smoothedBearing.toDouble()) 
+                    .bearing(smoothedBearing.toDouble()) // Explicitly passing Double
                     .build()
                 map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 100)
             }
@@ -211,18 +208,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         pulseGps.visibility = View.VISIBLE
         pulseInternet.visibility = View.VISIBLE
         
-        val scaleUp = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 3f)
+        val scaleUpX = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 3f)
         val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 3f)
         val fadeOut = PropertyValuesHolder.ofFloat(View.ALPHA, 0.6f, 0f)
 
-        val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseGps, scaleUp, scaleUpY, fadeOut)
-        gpsAnimator.duration = 1500
+        val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseGps, scaleUpX, scaleUpY, fadeOut)
+        gpsAnimator.duration = 1500L
         gpsAnimator.repeatCount = ValueAnimator.INFINITE
         gpsAnimator.interpolator = AccelerateDecelerateInterpolator()
         gpsAnimator.start()
 
-        val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseInternet, scaleUp, scaleUpY, fadeOut)
-        internetAnimator.duration = 1500
+        val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseInternet, scaleUpX, scaleUpY, fadeOut)
+        internetAnimator.duration = 1500L
         internetAnimator.repeatCount = ValueAnimator.INFINITE
         internetAnimator.interpolator = AccelerateDecelerateInterpolator()
         internetAnimator.start()
@@ -386,18 +383,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // FIXED: Explicitly used kotlin.math.* to avoid Double/Float mismatch
+    // FIXED: Using pure java.lang.Math to prevent Double/Float mismatch completely
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val r = 6371000.0 // Earth radius in meters
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
+        val earthRadius: Double = 6371000.0 // Earth radius in meters
+        val dLat: Double = Math.toRadians(lat2 - lat1)
+        val dLon: Double = Math.toRadians(lon2 - lon1)
         
-        val a = sin(dLat / 2.0) * sin(dLat / 2.0) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                sin(dLon / 2.0) * sin(dLon / 2.0)
+        val a: Double = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0)
+                
+        val c: Double = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
         
-        val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
-        return (r * c).toFloat()
+        return (earthRadius * c).toFloat()
     }
 
     private fun setupMap() {
@@ -426,7 +424,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         fusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
-                    val accuracy = location.accuracy
+                    val accuracy: Float = location.accuracy
                     
                     when {
                         accuracy < 10f -> { 
@@ -461,13 +459,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             if (lastRecordedLatLng == null) {
                                 shouldRecord = true
                             } else {
-                                val dist = calculateDistance(
+                                val dist: Float = calculateDistance(
                                     lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
                                     userLoc.latitude, userLoc.longitude
                                 )
+                                
                                 if (dist > getMinDistance()) shouldRecord = true
+                                
                                 if (dist > 2f) {
-                                    val bearingChange = abs(location.bearing - lastRecordedBearing)
+                                    val bearingChange: Float = abs(location.bearing - lastRecordedBearing)
                                     if (bearingChange > 30f) shouldRecord = true
                                 }
                             }
@@ -484,7 +484,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             var isOffRoute = true
                             for (feature in recordedPoints) {
                                 val p = feature.geometry() as Point
-                                val dist = calculateDistance(p.latitude(), p.longitude(), userLoc.latitude, userLoc.longitude)
+                                val dist: Float = calculateDistance(p.latitude(), p.longitude(), userLoc.latitude, userLoc.longitude)
                                 if (dist < 40f) { 
                                     isOffRoute = false
                                     break
@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             }
                             if (isOffRoute) {
                                 val currentTime = System.currentTimeMillis()
-                                if (currentTime - lastOffRouteTime > 10000) {
+                                if (currentTime - lastOffRouteTime > 10000L) {
                                     addPointToRoute(userLoc, "#FF1744")
                                     lastOffRouteTime = currentTime
                                 }
