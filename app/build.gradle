@@ -30,7 +30,7 @@ android {
 }
 
 dependencies {
-    // MapLibre SDK (11.13.5 version)
+    // MapLibre SDK (Stable version)
     implementation 'org.maplibre.gl:android-sdk:11.13.5'
 
     // Location services (GPS tracking)
@@ -41,4 +41,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // NAYA: RecyclerView for Saved Routes List
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
 }
