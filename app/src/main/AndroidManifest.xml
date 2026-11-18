@@ -11,12 +11,11 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.ProGuide">
 
-        <!-- Main Activity (Jahan map khulta hai) -->
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -26,7 +25,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Saved Routes Activity (Jahan save kiye hue routes dikhte hain) -->
+        <!-- Saved Routes Activity -->
         <activity
             android:name=".SavedRoutesActivity"
             android:exported="false" />
