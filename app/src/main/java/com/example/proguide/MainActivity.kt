@@ -7,6 +7,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -25,6 +26,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.Switch
@@ -101,7 +103,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // MAPLIBRE INITIALIZATION FIX: API key ki zaroorat nahi hoti yahan
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
@@ -181,6 +182,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    // ... (Sensor, Pulse, UpdateStatus same rahenge) ...
+
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR && isCompassModeEnabled) {
             val rotationMatrix = FloatArray(9)
@@ -210,7 +213,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun startPulseAnimations() {
+    private fun startPulseAnimations() { /* Same as before */ 
         pulseGps.visibility = View.VISIBLE
         pulseInternet.visibility = View.VISIBLE
         
@@ -231,7 +234,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         internetAnimator.start()
     }
 
-    private fun updateStatusUI(dotView: View, pulseView: View, colorHex: String) {
+    private fun updateStatusUI(dotView: View, pulseView: View, colorHex: String) { /* Same as before */
         val dotDrawable = GradientDrawable()
         dotDrawable.shape = GradientDrawable.OVAL
         dotDrawable.setColor(Color.parseColor(colorHex))
@@ -255,6 +258,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
         val btnDeleteData = view.findViewById<LinearLayout>(R.id.btnDeleteData)
+        val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes) // NAYA
 
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
@@ -296,6 +300,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload, useSdCard)
                 dialog.dismiss()
             }
+        }
+
+        // NAYA: Open Saved Routes Activity
+        btnViewRoutes.setOnClickListener {
+            val intent = Intent(this@MainActivity, SavedRoutesActivity::class.java)
+            intent.putExtra("use_sd_card", useSdCard)
+            startActivityForResult(intent, 100)
+            dialog.dismiss()
         }
 
         btnDeleteData.setOnClickListener {
@@ -356,7 +368,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         lastRecordedLatLng = null
         lastRecordedBearing = 0f
         
-        RouteFileManager.startNewRoute(this@MainActivity, useSdCard)
+        RouteFileManager.startNewRoute()
         
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
@@ -367,12 +379,44 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    // UPDATED: Ab stop karne par name aur description puchega
     private fun stopRecording() {
         isRecording = false
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
-        RouteFileManager.compressCurrentRoute()
-        Toast.makeText(this@MainActivity, "Saved & Compressed to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
+        
+        if (recordedPoints.isNotEmpty()) {
+            val builder = AlertDialog.Builder(this@MainActivity)
+            builder.setTitle("Save Route")
+            
+            val layout = LinearLayout(this@MainActivity)
+            layout.orientation = LinearLayout.VERTICAL
+            layout.setPadding(50, 40, 50, 10)
+            
+            val etName = EditText(this@MainActivity)
+            etName.hint = "Route Name (e.g., Ghar se Dukaan)"
+            layout.addView(etName)
+            
+            val etDesc = EditText(this@MainActivity)
+            etDesc.hint = "Description (Optional)"
+            layout.addView(etDesc)
+            
+            builder.setView(layout)
+            
+            builder.setPositiveButton("Save") { _, _ ->
+                val name = if (etName.text.toString().isBlank()) "Unnamed Route" else etName.text.toString()
+                val desc = etDesc.text.toString()
+                RouteFileManager.saveCurrentRoute(this@MainActivity, useSdCard, name, desc)
+                Toast.makeText(this@MainActivity, "Route Saved to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
+            }
+            builder.setNegativeButton("Discard") { _, _ ->
+                Toast.makeText(this@MainActivity, "Route Discarded.", Toast.LENGTH_SHORT).show()
+            }
+            builder.setCancelable(false)
+            builder.show()
+        } else {
+            Toast.makeText(this@MainActivity, "No points recorded.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun startReturning() {
@@ -584,6 +628,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             startLocationUpdates()
             monitorInternetConnection()
             startPulseAnimations()
+        }
+    }
+
+    // NAYA: SavedRoutesActivity se data wapas aane par route load karna
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 100 && resultCode == RESULT_OK) {
+            val fileName = data?.getStringExtra("load_route_file")
+            if (fileName != null) {
+                val allRoutes = RouteFileManager.getAllSavedRoutes(this@MainActivity, useSdCard)
+                val selectedRoute = allRoutes.find { it.fileName == fileName }
+                
+                if (selectedRoute != null) {
+                    recordedPoints.clear()
+                    for (p in selectedRoute.points) {
+                        val point = Point.fromLngLat(p.lng, p.lat)
+                        val feature = Feature.fromGeometry(point)
+                        feature.addStringProperty("color", p.color)
+                        recordedPoints.add(feature)
+                    }
+                    updateRouteOnMap()
+                    isReturning = false // Default mode
+                    Toast.makeText(this@MainActivity, "'${selectedRoute.name}' Loaded!", Toast.LENGTH_SHORT).show()
+                    
+                    // Route load hote hi map ko wahan le jao
+                    if (recordedPoints.isNotEmpty()) {
+                        val firstPoint = recordedPoints.first().geometry() as Point
+                        val pos = CameraPosition.Builder().target(LatLng(firstPoint.latitude(), firstPoint.longitude())).zoom(16.0).build()
+                        mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 1000)
+                    }
+                }
+            }
         }
     }
 
