@@ -16,11 +16,12 @@
         android:textSize="18sp"
         android:textStyle="bold" />
 
+    <!-- Yahan & ki jagah &amp; kar diya hai -->
     <TextView
         android:id="@+id/tvRouteDate"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Date & Time"
+        android:text="Date &amp; Time"
         android:textColor="#4CAF50"
         android:textSize="14sp"
         android:layout_marginTop="4dp"/>
