@@ -60,7 +60,6 @@ import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
-import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import java.util.Locale
@@ -121,6 +120,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
+        // FIX: Rotation hone par purane points wapas restore karo
+        if (savedInstanceState != null) {
+            val latArray = savedInstanceState.getDoubleArray("saved_lats")
+            val lngArray = savedInstanceState.getDoubleArray("saved_lngs")
+            if (latArray != null && lngArray != null) {
+                for (i in latArray.indices) {
+                    recordedPoints.add(LatLng(latArray[i], lngArray[i]))
+                }
+            }
+        }
+
         tts = TextToSpeech(this, this)
 
         prefs = getSharedPreferences("ProGuidePrefs", Context.MODE_PRIVATE)
@@ -175,26 +185,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
+        // FIX: Satellite Mode Crash Fix
         btnSatellite.setOnClickListener {
             mapLibreMap?.let { map ->
-                if (isSatelliteMode) {
-                    map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
-                        currentStyle = style
-                        setupRouteLayers(style)
-                        LocationHelper.enableLocation(this@MainActivity, map, style)
+                // 1. Crash se bachne ke liye animator ko pehle cancel karo
+                arrowAnimator?.cancel()
+                arrowAnimator = null
+
+                val newStyle = if (isSatelliteMode) MapConfig.DEFAULT_STYLE else MapConfig.SATELLITE_STYLE
+                
+                map.setStyle(newStyle) { style ->
+                    currentStyle = style
+                    setupRouteLayers(style)
+                    LocationHelper.enableLocation(this@MainActivity, map, style)
+                    
+                    isSatelliteMode = !isSatelliteMode
+                    if (isSatelliteMode) {
+                        tvSatelliteIcon.text = "🗺️"
+                        btnSatellite.setCardBackgroundColor(Color.parseColor("#E3F2FD"))
+                    } else {
+                        tvSatelliteIcon.text = "🛰"
+                        btnSatellite.setCardBackgroundColor(Color.WHITE)
                     }
-                    isSatelliteMode = false
-                    tvSatelliteIcon.text = "🛰"
-                    btnSatellite.setCardBackgroundColor(Color.WHITE)
-                } else {
-                    map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
-                        currentStyle = style
-                        setupRouteLayers(style)
-                        LocationHelper.enableLocation(this@MainActivity, map, style)
-                    }
-                    isSatelliteMode = true
-                    tvSatelliteIcon.text = "🗺️"
-                    btnSatellite.setCardBackgroundColor(Color.parseColor("#E3F2FD"))
                 }
             }
         }
@@ -276,24 +288,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     private fun setupRouteLayers(style: Style) {
-        // 1. Animation ko cancel karo taaki crash na ho
         arrowAnimator?.cancel()
 
-        // 2. Pehle Layer delete karo, phir Source
         if (style.getLayer(ROUTE_PURPLE_LAYER) != null) style.removeLayer(ROUTE_PURPLE_LAYER)
         if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
         if (style.getSource(ROUTE_PURPLE_SOURCE) != null) style.removeSource(ROUTE_PURPLE_SOURCE)
 
-        // 3. Source ko empty LineString se start karo (FeatureCollection se crash hota tha)
         val emptyLine = LineString.fromLngLats(emptyList())
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
 
-        // 4. Line Layer
         style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
             PropertyFactory.lineColor("#D500F9"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
         ))
 
-        // 5. Image safely load karo
         var imageLoaded = false
         try {
             val drawable = ContextCompat.getDrawable(this, R.drawable.route_arrow)
@@ -307,7 +314,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // 6. Arrow Layer sirf tab add karo jab image load ho jaye
         if (imageLoaded) {
             val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
                 PropertyFactory.symbolPlacement("line"),
@@ -319,7 +325,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             )
             style.addLayer(arrowLayer)
             
-            // 7. Animation start karo
             startArrowGlowAnimation(style)
         }
     }
@@ -332,8 +337,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         arrowAnimator?.repeatMode = ValueAnimator.REVERSE
         arrowAnimator?.addUpdateListener { animation ->
             val alpha = animation.animatedValue as Float
-            // Check karo ki style abhi bhi active hai, tabhi update karo
-            if (currentStyle == style) {
+            // Check karo ki style abhi bhi active hai (Crash Fix)
+            if (currentStyle === style) {
                 style.getLayerAs<SymbolLayer>(ARROW_LAYER)?.setProperties(
                     PropertyFactory.iconOpacity(alpha),
                     PropertyFactory.iconColor("#2196F3")
@@ -349,7 +354,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         currentRoutePointsForNav.clear()
         lastRecordedLatLng = null
         kalmanFilter = KalmanLatLong()
-        RouteFileManager.startNewRoute()
+        RouteFileManager.startNewRoute() // FileManager clear karo
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
         speak("Recording started")
@@ -420,12 +425,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
             
-            // Compass Settings
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
             val density = resources.displayMetrics.density
             val marginPx = (16 * density).toInt()
-            val topMarginPx = (100 * density).toInt() // Compass ko niche shift kiya
+            val topMarginPx = (100 * density).toInt() 
             
             map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
             
@@ -476,6 +480,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                             }
                             if (shouldRecord) {
                                 recordedPoints.add(userLoc)
+                                // FIX: FileManager me point pass karo taaki save hone par khaali na ho
+                                RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
+                                
                                 lastRecordedLatLng = userLoc
                                 updateAllMapLines()
                             }
@@ -596,6 +603,27 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
+    // FIX: SavedRoutesActivity se route load karne ke liye result handler
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 100 && resultCode == RESULT_OK) {
+            val fileName = data?.getStringExtra("load_route_file")
+            if (fileName != null) {
+                val routes = RouteFileManager.getAllSavedRoutes(this, useSdCard)
+                val selectedRoute = routes.find { it.fileName == fileName }
+                
+                if (selectedRoute != null) {
+                    recordedPoints.clear()
+                    for (p in selectedRoute.points) {
+                        recordedPoints.add(LatLng(p.lat, p.lng))
+                    }
+                    updateAllMapLines()
+                    Toast.makeText(this, "Route Loaded: ${selectedRoute.name}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume(); mapView.onResume()
         if (isCompassModeEnabled) { rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) } }
@@ -612,7 +640,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         super.onDestroy(); mapView.onDestroy()
     }
     
-    override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
+    override fun onSaveInstanceState(outState: Bundle) { 
+        super.onSaveInstanceState(outState); 
+        // FIX: Phone ghumne par points save karo
+        val lats = DoubleArray(recordedPoints.size) { recordedPoints[it].latitude }
+        val lngs = DoubleArray(recordedPoints.size) { recordedPoints[it].longitude }
+        outState.putDoubleArray("saved_lats", lats)
+        outState.putDoubleArray("saved_lngs", lngs)
+        mapView.onSaveInstanceState(outState) 
+    }
 
     private fun showBottomSheetMenu() {
         val dialog = BottomSheetDialog(this@MainActivity)
