@@ -51,11 +51,12 @@ import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import kotlin.math.abs
 
@@ -89,16 +90,34 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var rotationVectorSensor: Sensor? = null
     private var smoothedBearing: Float = 0f
 
+    // Recording & Return Variables
     private var isRecording = false
     private var isReturning = false
     private var selectedVehicle = "Car"
-    private val recordedPoints = mutableListOf<Feature>()
+    
+    // Route Points
+    private val recordedPoints = mutableListOf<LatLng>() // Master saved points
+    private val greenPoints = mutableListOf<LatLng>() // Covered correctly
+    private val redPoints = mutableListOf<LatLng>()   // Off route
+    private val yellowPoints = mutableListOf<LatLng>() // Recovered points
+    
     private var lastRecordedLatLng: LatLng? = null
     private var lastRecordedBearing: Float = 0f
     private var lastOffRouteTime: Long = 0
+    private var wasOffRoute = false
     
-    private val ROUTE_SOURCE_ID = "route-source"
-    private val ROUTE_LAYER_ID = "route-layer"
+    // Kalman Filter
+    private var kalmanFilter = KalmanLatLong()
+
+    // Layer IDs
+    private val ROUTE_PURPLE_SOURCE = "route-purple-source"
+    private val ROUTE_PURPLE_LAYER = "route-purple-layer"
+    private val RETURN_GREEN_SOURCE = "return-green-source"
+    private val RETURN_GREEN_LAYER = "return-green-layer"
+    private val RETURN_RED_SOURCE = "return-red-source"
+    private val RETURN_RED_LAYER = "return-red-layer"
+    private val RETURN_YELLOW_SOURCE = "return-yellow-source"
+    private val RETURN_YELLOW_LAYER = "return-yellow-layer"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -150,7 +169,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 if (isSatelliteMode) {
                     map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                         currentStyle = style
-                        setupRouteLayer(style)
+                        setupRouteLayers(style)
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = false
@@ -159,7 +178,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 } else {
                     map.setStyle(MapConfig.SATELLITE_STYLE) { style ->
                         currentStyle = style
-                        setupRouteLayer(style)
+                        setupRouteLayers(style)
                         LocationHelper.enableLocation(this@MainActivity, map, style)
                     }
                     isSatelliteMode = true
@@ -182,8 +201,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // ... (Sensor, Pulse, UpdateStatus same rahenge) ...
-
+    // ... (Sensor, Pulse, UpdateStatus same as before) ...
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR && isCompassModeEnabled) {
             val rotationMatrix = FloatArray(9)
@@ -216,17 +234,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun startPulseAnimations() { /* Same as before */ 
         pulseGps.visibility = View.VISIBLE
         pulseInternet.visibility = View.VISIBLE
-        
         val scaleUpX = PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 3f)
         val scaleUpY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 3f)
         val fadeOut = PropertyValuesHolder.ofFloat(View.ALPHA, 0.6f, 0f)
-
         val gpsAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseGps, scaleUpX, scaleUpY, fadeOut)
         gpsAnimator.duration = 1500L
         gpsAnimator.repeatCount = ValueAnimator.INFINITE
         gpsAnimator.interpolator = AccelerateDecelerateInterpolator()
         gpsAnimator.start()
-
         val internetAnimator = ObjectAnimator.ofPropertyValuesHolder(pulseInternet, scaleUpX, scaleUpY, fadeOut)
         internetAnimator.duration = 1500L
         internetAnimator.repeatCount = ValueAnimator.INFINITE
@@ -239,7 +254,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         dotDrawable.shape = GradientDrawable.OVAL
         dotDrawable.setColor(Color.parseColor(colorHex))
         dotView.background = dotDrawable
-
         val pulseDrawable = GradientDrawable()
         pulseDrawable.shape = GradientDrawable.OVAL
         pulseDrawable.setColor(Color.parseColor(colorHex))
@@ -258,13 +272,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
         val btnDeleteData = view.findViewById<LinearLayout>(R.id.btnDeleteData)
-        val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes) // NAYA
+        val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes)
 
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
             isCompassModeEnabled = isChecked
             prefs.edit().putBoolean("compass_mode", isChecked).apply()
-            
             if (isChecked) {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.NONE
                 rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
@@ -302,7 +315,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         }
 
-        // NAYA: Open Saved Routes Activity
         btnViewRoutes.setOnClickListener {
             val intent = Intent(this@MainActivity, SavedRoutesActivity::class.java)
             intent.putExtra("use_sd_card", useSdCard)
@@ -315,22 +327,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             builder.setTitle("Delete Data?")
             builder.setMessage("Kya aap sach me saare Routes aur Maps delete karna chahte hain?")
             builder.setPositiveButton("Yes, Delete") { _, _ ->
-                val routesDeleted = StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
-                val mapsDeleted = StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
-                
-                if (routesDeleted && mapsDeleted) {
-                    Toast.makeText(this@MainActivity, "Storage Cleared Successfully!", Toast.LENGTH_SHORT).show()
-                    val newRSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
-                    val newMSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
-                    tvStorageInfo.text = "Routes: $newRSize | Maps: $newMSize"
-                } else {
-                    Toast.makeText(this@MainActivity, "Kuch files delete nahi ho payi!", Toast.LENGTH_SHORT).show()
-                }
+                StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
+                StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                Toast.makeText(this@MainActivity, "Storage Cleared Successfully!", Toast.LENGTH_SHORT).show()
+                val newRSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
+                val newMSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                tvStorageInfo.text = "Routes: $newRSize | Maps: $newMSize"
             }
             builder.setNegativeButton("Cancel", null)
             builder.show()
         }
-        
         dialog.show()
     }
 
@@ -344,29 +350,52 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         builder.show()
     }
 
-    private fun setupRouteLayer(style: Style) {
-        if (style.getSource(ROUTE_SOURCE_ID) != null) {
-            style.removeLayer(ROUTE_LAYER_ID)
-            style.removeSource(ROUTE_SOURCE_ID)
+    // --- NAYA: 4 Alag LineLayers Setup ---
+    private fun setupRouteLayers(style: Style) {
+        // Clear old sources/layers if exist
+        listOf(ROUTE_PURPLE_SOURCE, RETURN_GREEN_SOURCE, RETURN_RED_SOURCE, RETURN_YELLOW_SOURCE).forEach {
+            if (style.getSource(it) != null) style.removeSource(it)
         }
-        val geoJsonSource = GeoJsonSource(ROUTE_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()))
-        style.addSource(geoJsonSource)
+        listOf(ROUTE_PURPLE_LAYER, RETURN_GREEN_LAYER, RETURN_RED_LAYER, RETURN_YELLOW_LAYER).forEach {
+            if (style.getLayer(it) != null) style.removeLayer(it)
+        }
 
-        val circleLayer = CircleLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
-            PropertyFactory.circleRadius(6f),
-            PropertyFactory.circleColor(org.maplibre.android.style.expressions.Expression.get("color")),
-            PropertyFactory.circleStrokeWidth(1.5f),
-            PropertyFactory.circleStrokeColor("#FFFFFF")
-        )
-        style.addLayer(circleLayer)
+        // 1. Purple Line (Recording)
+        style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
+        style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
+            PropertyFactory.lineColor("#D500F9"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
+        ))
+
+        // 2. Green Line (Return Safe)
+        style.addSource(GeoJsonSource(RETURN_GREEN_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
+        style.addLayer(LineLayer(RETURN_GREEN_LAYER, RETURN_GREEN_SOURCE).withProperties(
+            PropertyFactory.lineColor("#00E676"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
+        ))
+
+        // 3. Red Line (Off Route)
+        style.addSource(GeoJsonSource(RETURN_RED_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
+        style.addLayer(LineLayer(RETURN_RED_LAYER, RETURN_RED_SOURCE).withProperties(
+            PropertyFactory.lineColor("#FF1744"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
+        ))
+
+        // 4. Yellow Line (Recovery)
+        style.addSource(GeoJsonSource(RETURN_YELLOW_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
+        style.addLayer(LineLayer(RETURN_YELLOW_LAYER, RETURN_YELLOW_SOURCE).withProperties(
+            PropertyFactory.lineColor("#FFEA00"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
+        ))
     }
 
     private fun startRecording() {
         isRecording = true
         isReturning = false
         recordedPoints.clear()
+        greenPoints.clear()
+        redPoints.clear()
+        yellowPoints.clear()
         lastRecordedLatLng = null
         lastRecordedBearing = 0f
+        wasOffRoute = false
+        kalmanFilter = KalmanLatLong() // Reset filter
         
         RouteFileManager.startNewRoute()
         
@@ -374,12 +403,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         btnReturn.visibility = View.GONE
         Toast.makeText(this@MainActivity, "Recording Started ($selectedVehicle)", Toast.LENGTH_SHORT).show()
         
-        if (!isCompassModeEnabled) {
-            mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
-        }
+        if (!isCompassModeEnabled) mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
     }
 
-    // UPDATED: Ab stop karne par name aur description puchega
     private fun stopRecording() {
         isRecording = false
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
@@ -388,25 +414,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (recordedPoints.isNotEmpty()) {
             val builder = AlertDialog.Builder(this@MainActivity)
             builder.setTitle("Save Route")
-            
             val layout = LinearLayout(this@MainActivity)
             layout.orientation = LinearLayout.VERTICAL
             layout.setPadding(50, 40, 50, 10)
-            
             val etName = EditText(this@MainActivity)
             etName.hint = "Route Name (e.g., Ghar se Dukaan)"
             layout.addView(etName)
-            
             val etDesc = EditText(this@MainActivity)
             etDesc.hint = "Description (Optional)"
             layout.addView(etDesc)
-            
             builder.setView(layout)
             
             builder.setPositiveButton("Save") { _, _ ->
                 val name = if (etName.text.toString().isBlank()) "Unnamed Route" else etName.text.toString()
-                val desc = etDesc.text.toString()
-                RouteFileManager.saveCurrentRoute(this@MainActivity, useSdCard, name, desc)
+                RouteFileManager.saveCurrentRoute(this@MainActivity, useSdCard, name, etDesc.text.toString())
                 Toast.makeText(this@MainActivity, "Route Saved to ${if(useSdCard) "SD Card" else "Phone"}.", Toast.LENGTH_LONG).show()
             }
             builder.setNegativeButton("Discard") { _, _ ->
@@ -420,20 +441,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun startReturning() {
+        if (recordedPoints.isEmpty()) {
+            Toast.makeText(this@MainActivity, "Pehle koi route record karein!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         isReturning = true
         isRecording = false
+        greenPoints.clear()
+        redPoints.clear()
+        yellowPoints.clear()
+        wasOffRoute = false
+        kalmanFilter = KalmanLatLong() // Reset filter for return
+
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
-        Toast.makeText(this@MainActivity, "Return Mode: Follow the dots!", Toast.LENGTH_SHORT).show()
-        
-        val updatedFeatures = recordedPoints.map {
-            val point = it.geometry() as Point
-            val newFeature = Feature.fromGeometry(point)
-            newFeature.addStringProperty("color", "#00E676")
-            newFeature
-        }
-        recordedPoints.clear()
-        recordedPoints.addAll(updatedFeatures)
-        updateRouteOnMap()
+        Toast.makeText(this@MainActivity, "Return Mode: Follow the purple line!", Toast.LENGTH_SHORT).show()
+        updateAllMapLines()
     }
 
     private fun stopReturning() {
@@ -442,22 +465,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         Toast.makeText(this@MainActivity, "Return Mode Stopped.", Toast.LENGTH_SHORT).show()
     }
 
-    private fun updateRouteOnMap() {
-        runOnUiThread {
-            if (currentStyle == null) return@runOnUiThread
-            val featureCollection = FeatureCollection.fromFeatures(recordedPoints.toTypedArray())
-            val source = currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
-            source?.setGeoJson(featureCollection)
-        }
-    }
-
     private fun getMinDistance(): Float {
         return when(selectedVehicle) {
-            "Walk" -> 10f
-            "Cycle" -> 15f
-            "Bike" -> 20f
-            "Car" -> 30f
-            else -> 15f
+            "Walk" -> 10f; "Cycle" -> 15f; "Bike" -> 20f; "Car" -> 30f; else -> 15f
         }
     }
 
@@ -470,10 +480,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun setupMap() {
         mapView.getMapAsync { map ->
             mapLibreMap = map
-            
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
-            
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
             val density = resources.displayMetrics.density
@@ -483,9 +491,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
-                setupRouteLayer(style)
+                setupRouteLayers(style) // Setup new layers
                 LocationHelper.enableLocation(this@MainActivity, map, style)
-                
                 if (isCompassModeEnabled) {
                     map.locationComponent.cameraMode = CameraMode.NONE
                     rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
@@ -508,26 +515,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     val accuracy: Float = location.accuracy
                     
                     when {
-                        accuracy < 10f -> { 
-                            tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"
-                            updateStatusUI(dotGps, pulseGps, "#4CAF50") 
-                        }
-                        accuracy < 20f -> { 
-                            tvGpsStatus.text = "Good (${accuracy.toInt()}m)"
-                            updateStatusUI(dotGps, pulseGps, "#2196F3") 
-                        }
-                        accuracy < 50f -> { 
-                            tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"
-                            updateStatusUI(dotGps, pulseGps, "#FFC107") 
-                        }
-                        else -> { 
-                            tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"
-                            updateStatusUI(dotGps, pulseGps, "#F44336") 
-                        }
+                        accuracy < 10f -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#4CAF50") }
+                        accuracy < 20f -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#2196F3") }
+                        accuracy < 50f -> { tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#FFC107") }
+                        else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#F44336") }
                     }
 
                     if (accuracy <= 30f) { 
-                        val userLoc = LatLng(location.latitude, location.longitude)
+                        // NAYA: Kalman Filter lagaya
+                        kalmanFilter.process(location.latitude, location.longitude, accuracy, System.currentTimeMillis())
+                        val userLoc = LatLng(kalmanFilter.getLat(), kalmanFilter.getLng())
                         
                         if (isFirstLocationFix && mapLibreMap != null) {
                             val pos = CameraPosition.Builder().target(userLoc).zoom(16.0).tilt(50.0).build()
@@ -535,49 +532,64 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             isFirstLocationFix = false
                         }
 
+                        // --- RECORDING LOGIC ---
                         if (isRecording) {
                             var shouldRecord = false
                             if (lastRecordedLatLng == null) {
                                 shouldRecord = true
                             } else {
-                                val dist: Float = calculateDistance(
-                                    lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude,
-                                    userLoc.latitude, userLoc.longitude
-                                )
-                                
+                                val dist = calculateDistance(lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude, userLoc.latitude, userLoc.longitude)
                                 if (dist > getMinDistance()) shouldRecord = true
-                                
-                                if (dist > 2f) {
-                                    val bearingChange: Float = abs(location.bearing - lastRecordedBearing)
-                                    if (bearingChange > 30f) shouldRecord = true
-                                }
+                                if (dist > 2f && abs(location.bearing - lastRecordedBearing) > 30f) shouldRecord = true
                             }
 
                             if (shouldRecord) {
-                                addPointToRoute(userLoc, "#D500F9")
+                                recordedPoints.add(userLoc)
                                 lastRecordedLatLng = userLoc
                                 lastRecordedBearing = location.bearing
                                 RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
+                                updateAllMapLines()
                             }
                         } 
                         
+                        // --- RETURN MODE LOGIC ---
                         if (isReturning) {
                             var isOffRoute = true
-                            for (feature in recordedPoints) {
-                                val p = feature.geometry() as Point
-                                val dist: Float = calculateDistance(p.latitude(), p.longitude(), userLoc.latitude, userLoc.longitude)
-                                if (dist < 40f) { 
+                            // Check if user is near any saved point (within 20 meters)
+                            for (routePoint in recordedPoints) {
+                                val dist = calculateDistance(routePoint.latitude, routePoint.longitude, userLoc.latitude, userLoc.longitude)
+                                if (dist < 20f) { // Threshold for being "On Route"
                                     isOffRoute = false
                                     break
                                 }
                             }
+
                             if (isOffRoute) {
-                                val currentTime = System.currentTimeMillis()
-                                if (currentTime - lastOffRouteTime > 10000L) {
-                                    addPointToRoute(userLoc, "#FF1744")
-                                    lastOffRouteTime = currentTime
+                                if (!wasOffRoute) {
+                                    wasOffRoute = true
+                                    redPoints.add(userLoc)
+                                } else {
+                                    val lastRed = redPoints.last()
+                                    if (calculateDistance(lastRed.latitude, lastRed.longitude, userLoc.latitude, userLoc.longitude) > 5f) {
+                                        redPoints.add(userLoc)
+                                    }
+                                }
+                            } else {
+                                if (wasOffRoute) {
+                                    wasOffRoute = false
+                                    yellowPoints.add(userLoc) // First point of recovery
+                                } else {
+                                    val lastGreen = greenPoints.lastOrNull()
+                                    if (lastGreen == null) {
+                                        greenPoints.add(userLoc)
+                                    } else {
+                                        if (calculateDistance(lastGreen.latitude, lastGreen.longitude, userLoc.latitude, userLoc.longitude) > 5f) {
+                                            greenPoints.add(userLoc)
+                                        }
+                                    }
                                 }
                             }
+                            updateAllMapLines()
                         }
                     }
                 }
@@ -585,18 +597,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }, Looper.getMainLooper())
     }
 
-    private fun addPointToRoute(latLng: LatLng, colorHex: String) {
-        val point = Point.fromLngLat(latLng.longitude, latLng.latitude)
-        val feature = Feature.fromGeometry(point)
-        feature.addStringProperty("color", colorHex)
-        recordedPoints.add(feature)
-        updateRouteOnMap()
+    // --- NAYA: Function to Update all 4 Lines on Map ---
+    private fun updateAllMapLines() {
+        runOnUiThread {
+            if (currentStyle == null) return@runOnUiThread
+            
+            // 1. Update Purple Line (Saved Route)
+            updateLineSource(ROUTE_PURPLE_SOURCE, recordedPoints)
+
+            // 2. Update Green Line (Covered)
+            updateLineSource(RETURN_GREEN_SOURCE, greenPoints)
+
+            // 3. Update Red Line (Off route)
+            updateLineSource(RETURN_RED_SOURCE, redPoints)
+            
+            // 4. Update Yellow Line (Recovery)
+            updateLineSource(RETURN_YELLOW_SOURCE, yellowPoints)
+        }
     }
 
-    private fun monitorInternetConnection() {
+    private fun updateLineSource(sourceId: String, points: List<LatLng>) {
+        val source = currentStyle?.getSourceAs<GeoJsonSource>(sourceId)
+        if (points.size > 1) {
+            val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+            val lineString = LineString.fromLngLats(coordinates)
+            source?.setGeoJson(Feature.fromGeometry(lineString))
+        } else {
+            source?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+        }
+    }
+
+    private fun monitorInternetConnection() { /* Same as before */ 
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkRequest = NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
-
         connectivityManager.registerNetworkCallback(networkRequest, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 runOnUiThread {
@@ -631,7 +664,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // NAYA: SavedRoutesActivity se data wapas aane par route load karna
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 100 && resultCode == RESULT_OK) {
@@ -642,20 +674,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 
                 if (selectedRoute != null) {
                     recordedPoints.clear()
+                    // Load only coordinates
                     for (p in selectedRoute.points) {
-                        val point = Point.fromLngLat(p.lng, p.lat)
-                        val feature = Feature.fromGeometry(point)
-                        feature.addStringProperty("color", p.color)
-                        recordedPoints.add(feature)
+                        recordedPoints.add(LatLng(p.lat, p.lng))
                     }
-                    updateRouteOnMap()
-                    isReturning = false // Default mode
+                    greenPoints.clear()
+                    redPoints.clear()
+                    yellowPoints.clear()
+                    
+                    updateAllMapLines()
+                    isReturning = false
                     Toast.makeText(this@MainActivity, "'${selectedRoute.name}' Loaded!", Toast.LENGTH_SHORT).show()
                     
-                    // Route load hote hi map ko wahan le jao
                     if (recordedPoints.isNotEmpty()) {
-                        val firstPoint = recordedPoints.first().geometry() as Point
-                        val pos = CameraPosition.Builder().target(LatLng(firstPoint.latitude(), firstPoint.longitude())).zoom(16.0).build()
+                        val firstPoint = recordedPoints.first()
+                        val pos = CameraPosition.Builder().target(firstPoint).zoom(16.0).build()
                         mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 1000)
                     }
                 }
