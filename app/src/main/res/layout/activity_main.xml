@@ -136,7 +136,7 @@
         app:layout_constraintBottom_toTopOf="@+id/btnVoice"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- NAYA: Voice Button -->
+    <!-- Voice Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnVoice"
         android:layout_width="wrap_content"
