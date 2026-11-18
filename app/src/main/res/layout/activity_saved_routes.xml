@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1E1E1E">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Saved Routes"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:padding="16dp"
+        android:background="#121212"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvSavedRoutes"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/tvNoRoutes"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:text="No routes saved yet."
+        android:textColor="#AAAAAA"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:visibility="gone" />
+</LinearLayout>
