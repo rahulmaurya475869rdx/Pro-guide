@@ -3,7 +3,6 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Ek single chevron (arrow) jo upar ki taraf point karta hai -->
     <path
         android:fillColor="#2196F3"
         android:pathData="M 4,16 L 12,8 L 20,16 L 17,19 L 12,14 L 7,19 Z" />
