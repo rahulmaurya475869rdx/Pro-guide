@@ -276,39 +276,52 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     private fun setupRouteLayers(style: Style) {
+        // 1. Animation ko cancel karo taaki crash na ho
         arrowAnimator?.cancel()
 
+        // 2. Pehle Layer delete karo, phir Source
         if (style.getLayer(ROUTE_PURPLE_LAYER) != null) style.removeLayer(ROUTE_PURPLE_LAYER)
         if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
         if (style.getSource(ROUTE_PURPLE_SOURCE) != null) style.removeSource(ROUTE_PURPLE_SOURCE)
 
-        style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
+        // 3. Source ko empty LineString se start karo (FeatureCollection se crash hota tha)
+        val emptyLine = LineString.fromLngLats(emptyList())
+        style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
+
+        // 4. Line Layer
         style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
             PropertyFactory.lineColor("#D500F9"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
         ))
 
+        // 5. Image safely load karo
+        var imageLoaded = false
         try {
             val drawable = ContextCompat.getDrawable(this, R.drawable.route_arrow)
-            if (drawable != null) {
+            if (drawable != null && drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
                 val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
                 drawable.setBounds(0, 0, canvas.width, canvas.height)
                 drawable.draw(canvas)
-                style.addImage("route-arrow-icon", bitmap, true) 
+                style.addImage("route-arrow-icon", bitmap, true)
+                imageLoaded = true
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
-            PropertyFactory.symbolPlacement("line"),
-            PropertyFactory.iconImage("route-arrow-icon"),
-            PropertyFactory.iconSize(1.5f),
-            PropertyFactory.iconAllowOverlap(true),
-            PropertyFactory.iconIgnorePlacement(true),
-            PropertyFactory.symbolSpacing(30f)
-        )
-        style.addLayer(arrowLayer)
-        
-        startArrowGlowAnimation(style)
+        // 6. Arrow Layer sirf tab add karo jab image load ho jaye
+        if (imageLoaded) {
+            val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
+                PropertyFactory.symbolPlacement("line"),
+                PropertyFactory.iconImage("route-arrow-icon"),
+                PropertyFactory.iconSize(1.5f),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.symbolSpacing(30f)
+            )
+            style.addLayer(arrowLayer)
+            
+            // 7. Animation start karo
+            startArrowGlowAnimation(style)
+        }
     }
 
     private fun startArrowGlowAnimation(style: Style) {
@@ -319,10 +332,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         arrowAnimator?.repeatMode = ValueAnimator.REVERSE
         arrowAnimator?.addUpdateListener { animation ->
             val alpha = animation.animatedValue as Float
-            style.getLayerAs<SymbolLayer>(ARROW_LAYER)?.setProperties(
-                PropertyFactory.iconOpacity(alpha),
-                PropertyFactory.iconColor("#2196F3")
-            )
+            // Check karo ki style abhi bhi active hai, tabhi update karo
+            if (currentStyle == style) {
+                style.getLayerAs<SymbolLayer>(ARROW_LAYER)?.setProperties(
+                    PropertyFactory.iconOpacity(alpha),
+                    PropertyFactory.iconColor("#2196F3")
+                )
+            }
         }
         arrowAnimator?.start()
     }
@@ -404,12 +420,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
             
-            // Compass Settings (Adjusted for better spacing)
+            // Compass Settings
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
             val density = resources.displayMetrics.density
             val marginPx = (16 * density).toInt()
-            val topMarginPx = (100 * density).toInt() // Yahan 80 se badhakar 100 kar diya hai
+            val topMarginPx = (100 * density).toInt() // Compass ko niche shift kiya
+            
             map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
             
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
