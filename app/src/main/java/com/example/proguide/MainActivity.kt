@@ -56,7 +56,6 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -299,7 +298,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
         
         val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
-            PropertyFactory.symbolPlacement(Property.SYMBOL_PLACEMENT_LINE),
+            PropertyFactory.symbolPlacement("line"),
             PropertyFactory.iconImage("route-arrow-icon"),
             PropertyFactory.iconSize(1.5f),
             PropertyFactory.iconAllowOverlap(true),
@@ -386,7 +385,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         Toast.makeText(this@MainActivity, "Return Mode ON", Toast.LENGTH_SHORT).show()
         updateAllMapLines()
         
-        currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility(Property.VISIBILITY_VISIBLE))
+        // FIXED: VISIBILITY_VISIBLE string literal use kiya hai
+        currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
     }
 
     private fun stopReturning() {
@@ -395,7 +395,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         speak("Return mode stopped")
         Toast.makeText(this@MainActivity, "Return Mode OFF", Toast.LENGTH_SHORT).show()
         
-        currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility(Property.VISIBILITY_NONE))
+        // FIXED: VISIBILITY_NONE string literal use kiya hai
+        currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("none"))
     }
 
     private fun setupMap() {
@@ -471,18 +472,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (currentRoutePointsForNav.size < 2) return
 
         var closestIndex = -1
-        var minDistance = Double.MAX_VALUE
+        // FIXED: Float.MAX_VALUE use kiya taaki mismatch na ho
+        var minDistance = Float.MAX_VALUE
         
         for (i in 0 until currentRoutePointsForNav.size - 1) {
             val point = currentRoutePointsForNav[i]
             val dist = calculateDistance(userLoc.latitude, userLoc.longitude, point.latitude, point.longitude)
             if (dist < minDistance) {
-                minDistance = dist.toDouble()
+                minDistance = dist
                 closestIndex = i
             }
         }
 
-        if (minDistance > 50.0) return
+        if (minDistance > 50f) return
 
         if (closestIndex != -1 && closestIndex < currentRoutePointsForNav.size - 2) {
             val nextPoint = currentRoutePointsForNav[closestIndex + 1]
@@ -521,6 +523,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
+    // FIXED: Explicitly .toFloat() return kiya hai
     private fun calculateBearing(start: LatLng, end: LatLng): Float {
         val lat1 = Math.toRadians(start.latitude)
         val lon1 = Math.toRadians(start.longitude)
@@ -529,13 +532,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         val dLon = lon2 - lon1
         val y = Math.sin(dLon) * Math.cos(lat2)
         val x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
-        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360
+        return ((Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0).toFloat()
     }
 
     private fun calculateTurnAngle(bearing1: Float, bearing2: Float): Float {
         var diff = bearing2 - bearing1
-        if (diff > 180) diff -= 360
-        if (diff < -180) diff += 360
+        if (diff > 180f) diff -= 360f
+        if (diff < -180f) diff += 360f
         return diff 
     }
 
