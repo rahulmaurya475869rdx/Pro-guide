@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Menu Button (Ab ye Top-Left me hai) -->
+    <!-- Menu Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/btnMenu"
         android:layout_width="wrap_content"
@@ -22,7 +22,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- Status Panel (Bottom-Left) -->
+    <!-- Status Panel -->
     <LinearLayout
         android:id="@+id/statusPanel"
         android:layout_width="wrap_content"
@@ -30,8 +30,6 @@
         android:layout_marginStart="16dp"
         android:layout_marginBottom="24dp"
         android:orientation="vertical"
-        android:clipChildren="false"
-        android:clipToPadding="false"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -41,8 +39,6 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:clipChildren="false"
-            android:clipToPadding="false"
             android:paddingBottom="8dp">
             
             <TextView
@@ -50,8 +46,7 @@
                 android:layout_height="24dp"
                 android:text="🛰"
                 android:textSize="18sp"
-                android:gravity="center"
-                android:shadowColor="#000000" android:shadowDx="1" android:shadowDy="1" android:shadowRadius="2"/>
+                android:gravity="center"/>
 
             <TextView
                 android:id="@+id/tvGpsStatus"
@@ -61,29 +56,14 @@
                 android:text="Searching..."
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:shadowColor="#000000" android:shadowDx="1.5" android:shadowDy="1.5" android:shadowRadius="3" />
+                android:textStyle="bold" />
 
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:layout_marginStart="4dp"
-                android:clipChildren="false"
-                android:clipToPadding="false">
-                
-                <View
-                    android:id="@+id/pulseGps"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:layout_gravity="center"
-                    android:visibility="invisible" />
-                
-                <View
-                    android:id="@+id/dotGps"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:layout_gravity="center"
-                    android:background="@drawable/bg_status_dot" />
+                android:layout_marginStart="4dp">
+                <View android:id="@+id/pulseGps" android:layout_width="12dp" android:layout_height="12dp" android:layout_gravity="center" android:visibility="invisible" />
+                <View android:id="@+id/dotGps" android:layout_width="12dp" android:layout_height="12dp" android:layout_gravity="center" android:background="@drawable/bg_status_dot" />
             </FrameLayout>
         </LinearLayout>
 
@@ -92,16 +72,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:clipChildren="false"
-            android:clipToPadding="false">
+            android:orientation="horizontal">
             
             <ImageView
                 android:layout_width="22dp"
                 android:layout_height="22dp"
                 android:src="@android:drawable/ic_menu_compass"
-                app:tint="#FFFFFF"
-                android:shadowColor="#000000" android:shadowDx="1" android:shadowDy="1" android:shadowRadius="2"/>
+                app:tint="#FFFFFF"/>
 
             <TextView
                 android:id="@+id/tvNetStatus"
@@ -111,34 +88,19 @@
                 android:text="Offline"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:shadowColor="#000000" android:shadowDx="1.5" android:shadowDy="1.5" android:shadowRadius="3" />
+                android:textStyle="bold" />
 
             <FrameLayout
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:layout_marginStart="4dp"
-                android:clipChildren="false"
-                android:clipToPadding="false">
-                
-                <View
-                    android:id="@+id/pulseInternet"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:layout_gravity="center"
-                    android:visibility="invisible" />
-                
-                <View
-                    android:id="@+id/dotInternet"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:layout_gravity="center"
-                    android:background="@drawable/bg_status_dot" />
+                android:layout_marginStart="4dp">
+                <View android:id="@+id/pulseInternet" android:layout_width="12dp" android:layout_height="12dp" android:layout_gravity="center" android:visibility="invisible" />
+                <View android:id="@+id/dotInternet" android:layout_width="12dp" android:layout_height="12dp" android:layout_gravity="center" android:background="@drawable/bg_status_dot" />
             </FrameLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Satellite Button (Top-Right) -->
+    <!-- Satellite Button -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/btnSatellite"
         android:layout_width="56dp"
@@ -170,6 +132,19 @@
         android:visibility="gone" 
         android:src="@android:drawable/ic_menu_revert"
         app:backgroundTint="#00E676" 
+        app:tint="#000000"
+        app:layout_constraintBottom_toTopOf="@+id/btnVoice"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- NAYA: Voice Button -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/btnVoice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp" 
+        android:layout_marginEnd="16dp"
+        android:src="@android:drawable/ic_lock_silent_mode"
+        app:backgroundTint="#FFFFFF"
         app:tint="#000000"
         app:layout_constraintBottom_toTopOf="@+id/btnMyLocation"
         app:layout_constraintEnd_toEndOf="parent" />
