@@ -276,8 +276,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     private fun setupRouteLayers(style: Style) {
-        if (style.getSource(ROUTE_PURPLE_SOURCE) != null) style.removeSource(ROUTE_PURPLE_SOURCE)
+        arrowAnimator?.cancel()
+
         if (style.getLayer(ROUTE_PURPLE_LAYER) != null) style.removeLayer(ROUTE_PURPLE_LAYER)
+        if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
+        if (style.getSource(ROUTE_PURPLE_SOURCE) != null) style.removeSource(ROUTE_PURPLE_SOURCE)
 
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, FeatureCollection.fromFeatures(emptyArray())))
         style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
@@ -291,12 +294,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 val canvas = Canvas(bitmap)
                 drawable.setBounds(0, 0, canvas.width, canvas.height)
                 drawable.draw(canvas)
-                style.addImage("route-arrow-icon", bitmap)
+                style.addImage("route-arrow-icon", bitmap, true) 
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
-        
         val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
             PropertyFactory.symbolPlacement("line"),
             PropertyFactory.iconImage("route-arrow-icon"),
@@ -385,7 +386,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         Toast.makeText(this@MainActivity, "Return Mode ON", Toast.LENGTH_SHORT).show()
         updateAllMapLines()
         
-        // FIXED: VISIBILITY_VISIBLE string literal use kiya hai
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
     }
 
@@ -395,7 +395,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         speak("Return mode stopped")
         Toast.makeText(this@MainActivity, "Return Mode OFF", Toast.LENGTH_SHORT).show()
         
-        // FIXED: VISIBILITY_NONE string literal use kiya hai
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("none"))
     }
 
@@ -404,8 +403,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             mapLibreMap = map
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
+            
+            // Compass Settings (Adjusted for better spacing)
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.setCompassGravity(Gravity.TOP or Gravity.END)
+            val density = resources.displayMetrics.density
+            val marginPx = (16 * density).toInt()
+            val topMarginPx = (100 * density).toInt() // Yahan 80 se badhakar 100 kar diya hai
+            map.uiSettings.setCompassMargins(marginPx, topMarginPx, marginPx, marginPx)
             
             map.setStyle(MapConfig.DEFAULT_STYLE) { style ->
                 currentStyle = style
@@ -472,7 +477,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (currentRoutePointsForNav.size < 2) return
 
         var closestIndex = -1
-        // FIXED: Float.MAX_VALUE use kiya taaki mismatch na ho
         var minDistance = Float.MAX_VALUE
         
         for (i in 0 until currentRoutePointsForNav.size - 1) {
@@ -523,7 +527,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    // FIXED: Explicitly .toFloat() return kiya hai
     private fun calculateBearing(start: LatLng, end: LatLng): Float {
         val lat1 = Math.toRadians(start.latitude)
         val lon1 = Math.toRadians(start.longitude)
