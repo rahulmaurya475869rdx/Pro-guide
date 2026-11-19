@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     private var isRecording = false
     private var isReturning = false
+    private var isForwardNavigation = true // True matlab A->B, False matlab B->A
     private var selectedVehicle = "Car"
     private val recordedPoints = mutableListOf<LatLng>() 
     
@@ -109,12 +110,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private var lastRecordedLatLng: LatLng? = null
     private var kalmanFilter = KalmanLatLong()
 
-    // Navigation Arrows UI
     private lateinit var navArrowView: NavigationArrowView
 
     private val ROUTE_PURPLE_SOURCE = "route-purple-source"
     private val ROUTE_PURPLE_LAYER = "route-purple-layer"
     private val ARROW_LAYER = "route-arrows-layer"
+    private val CONNECTING_SOURCE = "connecting-source"
+    private val CONNECTING_LAYER = "connecting-layer"
     private var arrowAnimator: ValueAnimator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -123,7 +125,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
-        // FIX: Rotation hone par purane points wapas restore karo
         if (savedInstanceState != null) {
             val latArray = savedInstanceState.getDoubleArray("saved_lats")
             val lngArray = savedInstanceState.getDoubleArray("saved_lngs")
@@ -153,7 +154,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         btnVoice = findViewById(R.id.btnVoice)
         btnSatellite = findViewById(R.id.btnSatellite)
         tvSatelliteIcon = findViewById(R.id.tvSatelliteIcon)
-        navArrowView = findViewById(R.id.navArrowView) // Init Arrow View
+        navArrowView = findViewById(R.id.navArrowView)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
@@ -189,10 +190,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        // Satellite Mode Crash Fix
         btnSatellite.setOnClickListener {
             mapLibreMap?.let { map ->
-                // 1. Crash se bachne ke liye animator ko pehle cancel karo
                 arrowAnimator?.cancel()
                 arrowAnimator = null
 
@@ -202,6 +201,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                     currentStyle = style
                     setupRouteLayers(style)
                     LocationHelper.enableLocation(this@MainActivity, map, style)
+                    updateAllMapLines()
                     
                     isSatelliteMode = !isSatelliteMode
                     if (isSatelliteMode) {
@@ -297,12 +297,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (style.getLayer(ROUTE_PURPLE_LAYER) != null) style.removeLayer(ROUTE_PURPLE_LAYER)
         if (style.getLayer(ARROW_LAYER) != null) style.removeLayer(ARROW_LAYER)
         if (style.getSource(ROUTE_PURPLE_SOURCE) != null) style.removeSource(ROUTE_PURPLE_SOURCE)
+        
+        if (style.getLayer(CONNECTING_LAYER) != null) style.removeLayer(CONNECTING_LAYER)
+        if (style.getSource(CONNECTING_SOURCE) != null) style.removeSource(CONNECTING_SOURCE)
 
+        // Main Route Source
         val emptyLine = LineString.fromLngLats(emptyList())
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
 
+        // Connecting Dotted Line Source
+        style.addSource(GeoJsonSource(CONNECTING_SOURCE, Feature.fromGeometry(emptyLine)))
+
+        // Main Purple Line
         style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
             PropertyFactory.lineColor("#D500F9"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
+        ))
+
+        // Connecting Dotted Line Layer
+        style.addLayer(LineLayer(CONNECTING_LAYER, CONNECTING_SOURCE).withProperties(
+            PropertyFactory.lineColor("#FFC107"), 
+            PropertyFactory.lineWidth(4f),
+            PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+            PropertyFactory.lineJoin("round")
         ))
 
         var imageLoaded = false
@@ -318,6 +334,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         } catch (e: Exception) { e.printStackTrace() }
 
+        // Map Line Arrows (Jaisa tune bola, inhe rakhna hai)
         if (imageLoaded) {
             val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
                 PropertyFactory.symbolPlacement("line"),
@@ -353,16 +370,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     private fun startRecording() {
         isRecording = true; isReturning = false
+        isForwardNavigation = true
         recordedPoints.clear(); announcedTurns.clear()
         currentRoutePointsForNav.clear()
         lastRecordedLatLng = null
         kalmanFilter = KalmanLatLong()
-        RouteFileManager.startNewRoute() // FileManager clear karo
+        RouteFileManager.startNewRoute()
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
-        navArrowView.visibility = View.GONE // Recording shuru hote hi arrows hide
+        navArrowView.visibility = View.GONE
         speak("Recording started")
         Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
     }
 
     private fun stopRecording() {
@@ -400,28 +419,78 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             Toast.makeText(this@MainActivity, "Pehle koi route record karein!", Toast.LENGTH_SHORT).show()
             return
         }
+        startNavigation(false)
+    }
+
+    private fun startNavigation(isForward: Boolean) {
         isReturning = true
         isRecording = false
+        isForwardNavigation = isForward
         announcedTurns.clear()
         
-        currentRoutePointsForNav = recordedPoints.reversed().toMutableList()
+        currentRoutePointsForNav = if (isForward) recordedPoints.toMutableList() else recordedPoints.reversed().toMutableList()
         
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
-        speak("Return mode started. Follow the glowing arrows.")
-        Toast.makeText(this@MainActivity, "Return Mode ON", Toast.LENGTH_SHORT).show()
-        updateAllMapLines()
+        btnReturn.visibility = View.VISIBLE
+        speak(if (isForward) "Navigation started." else "Return mode started.")
+        Toast.makeText(this, "Navigation ON", Toast.LENGTH_SHORT).show()
         
+        updateAllMapLines()
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
+        
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    snapToRouteAndStart(LatLng(loc.latitude, loc.longitude))
+                }
+            }
+        }
     }
 
     private fun stopReturning() {
         isReturning = false
-        navArrowView.visibility = View.GONE // Arrows Hide
+        navArrowView.visibility = View.GONE
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
-        speak("Return mode stopped")
-        Toast.makeText(this@MainActivity, "Return Mode OFF", Toast.LENGTH_SHORT).show()
+        speak("Navigation stopped")
+        Toast.makeText(this@MainActivity, "Navigation OFF", Toast.LENGTH_SHORT).show()
         
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("none"))
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        
+        isForwardNavigation = true
+        updateAllMapLines()
+    }
+
+    // FIX: Route Snapping (200m door ho toh dotted line draw karo)
+    private fun snapToRouteAndStart(currentLoc: LatLng) {
+        if (currentRoutePointsForNav.size < 2) return
+        
+        var closestIndex = -1
+        var minDistance = Float.MAX_VALUE
+        
+        for (i in currentRoutePointsForNav.indices) {
+            val dist = calculateDistance(currentLoc.latitude, currentLoc.longitude, currentRoutePointsForNav[i].latitude, currentRoutePointsForNav[i].longitude)
+            if (dist < minDistance) {
+                minDistance = dist
+                closestIndex = i
+            }
+        }
+        
+        if (closestIndex != -1 && minDistance < 200f) {
+            currentRoutePointsForNav = currentRoutePointsForNav.drop(closestIndex).toMutableList()
+            
+            if (minDistance > 15f && currentRoutePointsForNav.isNotEmpty() && currentStyle != null) {
+                val coords = listOf(
+                    Point.fromLngLat(currentLoc.longitude, currentLoc.latitude), 
+                    Point.fromLngLat(currentRoutePointsForNav[0].longitude, currentRoutePointsForNav[0].latitude)
+                )
+                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(coords)))
+            } else if (currentStyle != null) {
+                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+            }
+        } else if (currentStyle != null) {
+            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        }
     }
 
     private fun setupMap() {
@@ -442,6 +511,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 currentStyle = style
                 setupRouteLayers(style)
                 LocationHelper.enableLocation(this@MainActivity, map, style)
+                updateAllMapLines()
             }
         }
     }
@@ -493,6 +563,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                         } 
                         
                         if (isReturning) {
+                            // Agar user route ke starting point ke paas pahunch gaya, toh dotted line hata do
+                            if (currentRoutePointsForNav.isNotEmpty()) {
+                                val startPoint = currentRoutePointsForNav[0]
+                                val distToStart = calculateDistance(userLoc.latitude, userLoc.longitude, startPoint.latitude, startPoint.longitude)
+                                if (distToStart < 15f) {
+                                    currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+                                }
+                            }
                             checkNavigation(userLoc, location.bearing)
                         }
                     }
@@ -510,7 +588,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         var closestIndex = -1
         var minDistance = Float.MAX_VALUE
         
-        // 1. Route par sabse paas wala point dhundo
         for (i in 0 until currentRoutePointsForNav.size - 1) {
             val point = currentRoutePointsForNav[i]
             val dist = calculateDistance(userLoc.latitude, userLoc.longitude, point.latitude, point.longitude)
@@ -520,13 +597,30 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        // Agar user route se door hai, toh arrows hide kar do
-        if (minDistance > 50f || closestIndex == -1 || closestIndex >= currentRoutePointsForNav.size - 2) {
+        // Agar user route se door hai (>50m) par 200m ke andar hai (dotted line active hai)
+        // Toh HUD ko route ke first point ki taraf guide karo
+        if (minDistance > 50f) {
+            val startPoint = currentRoutePointsForNav[0]
+            val distToStart = calculateDistance(userLoc.latitude, userLoc.longitude, startPoint.latitude, startPoint.longitude)
+            val bearingToStart = calculateBearing(userLoc, startPoint)
+            val turnAngle = calculateTurnAngle(currentBearing, bearingToStart)
+
+            runOnUiThread {
+                if (isReturning) {
+                    navArrowView.visibility = View.VISIBLE
+                    navArrowView.setDirection(turnAngle)
+                } else {
+                    navArrowView.visibility = View.GONE
+                }
+            }
+            return
+        }
+
+        if (closestIndex == -1 || closestIndex >= currentRoutePointsForNav.size - 2) {
             runOnUiThread { navArrowView.visibility = View.GONE }
             return
         }
 
-        // 2. Agla turn dhundo
         var nextTurnIndex = closestIndex
         var turnAngle = 0f
         var distToTurn = 0f
@@ -540,7 +634,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             val bearing2 = calculateBearing(p2, p3)
             val angle = calculateTurnAngle(bearing1, bearing2)
 
-            if (abs(angle) > 15f) { // Turn mil gaya
+            if (abs(angle) > 15f) { 
                 nextTurnIndex = i + 1
                 turnAngle = angle
                 distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, p2.latitude, p2.longitude)
@@ -548,13 +642,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        if (nextTurnIndex == closestIndex) { // Koi turn nahi, seedha jana hai
+        if (nextTurnIndex == closestIndex) { 
             val lastPoint = currentRoutePointsForNav.last()
             distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, lastPoint.latitude, lastPoint.longitude)
             turnAngle = 0f
         }
 
-        // 3. Voice Announcement
         if (distToTurn in 15f..40f && !announcedTurns.contains(nextTurnIndex) && turnAngle != 0f) {
             announcedTurns.add(nextTurnIndex)
             val voiceText = when {
@@ -566,24 +659,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             speak("In ${distToTurn.toInt()} meters, $voiceText")
         }
 
-        // 4. Update Screen Arrows
         runOnUiThread {
             if (isReturning) {
                 navArrowView.visibility = View.VISIBLE
-                // Arrow view ko turnAngle pass karo. Positive = Right, Negative = Left.
-                // Agar turnAngle 0 hai (straight), toh arrows seedhe point karenge.
-                navArrowView.setDirection(turnAngle) 
+                navArrowView.setDirection(turnAngle)
             } else {
                 navArrowView.visibility = View.GONE
             }
         }
     }
 
+    // FIX: Map arrows ka face direction change karega based on Navigation mode
     private fun updateAllMapLines() {
         runOnUiThread {
             if (currentStyle == null) return@runOnUiThread
             if (recordedPoints.size > 1) {
-                val coords = recordedPoints.map { Point.fromLngLat(it.longitude, it.latitude) }
+                val pointsToDraw = if (isForwardNavigation) recordedPoints else recordedPoints.reversed()
+                val coords = pointsToDraw.map { Point.fromLngLat(it.longitude, it.latitude) }
                 val line = LineString.fromLngLats(coords)
                 currentStyle?.getSourceAs<GeoJsonSource>(ROUTE_PURPLE_SOURCE)?.setGeoJson(Feature.fromGeometry(line))
             }
@@ -642,6 +734,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
+    // FIX: Auto Start Navigation on Route Load
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 100 && resultCode == RESULT_OK) {
@@ -657,6 +750,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                     }
                     updateAllMapLines()
                     Toast.makeText(this, "Route Loaded: ${selectedRoute.name}", Toast.LENGTH_SHORT).show()
+                    
+                    // Load hote hi Navigation start
+                    startNavigation(true)
                 }
             }
         }
