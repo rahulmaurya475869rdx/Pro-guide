@@ -100,19 +100,19 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- NAYA: Glowing Navigation Arrows (Map ke upar, buttons se niche) -->
+    <!-- NAYA: Glowing Navigation Arrows (Top Z-Index) -->
     <com.example.proguide.NavigationArrowView
         android:id="@+id/navArrowView"
         android:layout_width="200dp"
-        android:layout_height="250dp"
+        android:layout_height="280dp"
         android:visibility="gone"
-        android:elevation="8dp"
-        app:layout_constraintBottom_toTopOf="@+id/btnRecord"
+        android:elevation="20dp"
+        android:translationZ="20dp"
+        app:layout_constraintBottom_toTopOf="@+id/btnReturn"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintVertical_bias="0.75" /> 
-        <!-- Bias 0.75 isko center se thoda niche rakhega aur Record button se upar -->
+        app:layout_constraintVertical_bias="0.8" /> 
 
     <!-- Satellite Button -->
     <com.google.android.material.card.MaterialCardView
