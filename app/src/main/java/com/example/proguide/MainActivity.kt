@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             var delta: Float = azimuth - smoothedBearing
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
-            smoothedBearing += (0.15f * delta) // Thoda fast smoothing
+            smoothedBearing += (0.15f * delta)
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
             
@@ -349,7 +349,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (style.getLayer(CONNECTING_LAYER) != null) style.removeLayer(CONNECTING_LAYER)
         if (style.getSource(CONNECTING_SOURCE) != null) style.removeSource(CONNECTING_SOURCE)
 
-        val emptyLine = LineString.fromLngLats(emptyList())
+        // FIX: Added <Point> to emptyList()
+        val emptyLine = LineString.fromLngLats(emptyList<Point>())
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
         style.addSource(GeoJsonSource(CONNECTING_SOURCE, Feature.fromGeometry(emptyLine)))
 
@@ -424,7 +425,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         navArrowView.visibility = View.GONE
         speak("Recording started")
         Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
-        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
     }
 
     private fun stopRecording() {
@@ -481,7 +482,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         
         updateAllMapLines()
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
-        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
@@ -501,7 +502,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         Toast.makeText(this@MainActivity, "Navigation OFF", Toast.LENGTH_SHORT).show()
         
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("none"))
-        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         
         isForwardNavigation = true
         updateAllMapLines()
@@ -526,7 +527,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
         
         if (isReturning) {
-            checkNavigation(currentLoc, 0f)
+            checkNavigation(currentLoc)
         }
     }
 
@@ -646,11 +647,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 isOffRouteAlerted = true
             }
             
-            // Arrow is handled in onSensorChanged dynamically
             return 
         } else {
             isOffRouteAlerted = false
-            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         }
 
         // 2. TURN ANNOUNCEMENTS (Voice Only)
@@ -782,7 +782,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     override fun onResume() {
         super.onResume(); mapView.onResume()
-        // High frequency sensor updates for smooth compass
         rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
     }
 
