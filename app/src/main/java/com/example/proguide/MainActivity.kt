@@ -89,15 +89,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private var isFirstLocationFix = true
     private lateinit var prefs: SharedPreferences
     private var isCompassModeEnabled = false
+    private var isArrowsEnabled = true // HUD Arrows ON/OFF
     private var useSdCard = false
 
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
-    private var smoothedBearing: Float = 0f
+    private var smoothedBearing: Float = 0f // Compass Heading
 
     private var isRecording = false
     private var isReturning = false
-    private var isForwardNavigation = true // True matlab A->B, False matlab B->A
+    private var isForwardNavigation = true 
+    private var isOffRouteAlerted = false
     private var selectedVehicle = "Car"
     private val recordedPoints = mutableListOf<LatLng>() 
     
@@ -139,6 +141,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         prefs = getSharedPreferences("ProGuidePrefs", Context.MODE_PRIVATE)
         isCompassModeEnabled = prefs.getBoolean("compass_mode", false)
+        isArrowsEnabled = prefs.getBoolean("show_arrows", true) // Default ON
         useSdCard = prefs.getBoolean("use_sd_card", false)
 
         mapView = findViewById(R.id.mapView)
@@ -245,7 +248,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR && isCompassModeEnabled) {
+        if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
             val rotationMatrix = FloatArray(9)
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             val orientation = FloatArray(3)
@@ -258,10 +261,36 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             smoothedBearing += (0.08f * delta)
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
-            mapLibreMap?.let { map ->
-                val pos = CameraPosition.Builder(map.cameraPosition).bearing(smoothedBearing.toDouble()).build()
-                map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 250)
+            
+            // Update Map Rotation
+            if (isCompassModeEnabled) {
+                mapLibreMap?.let { map ->
+                    val pos = CameraPosition.Builder(map.cameraPosition).bearing(smoothedBearing.toDouble()).build()
+                    map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 250)
+                }
             }
+            
+            // Update HUD Arrow with Compass (if navigating and moving slow)
+            if (isReturning && isArrowsEnabled) {
+                // HUD ko compass se rotate karna hai
+                updateHudCompassDirection()
+            }
+        }
+    }
+
+    private fun updateHudCompassDirection() {
+        if (!isReturning || currentRoutePointsForNav.isEmpty() || !isArrowsEnabled) return
+        
+        // Agar user raste par hai, toh next point ka bearing nikaalo
+        val currentLoc = if (currentRoutePointsForNav.isNotEmpty()) currentRoutePointsForNav[0] else return
+        
+        // Yahan hum device heading (compass) aur target bearing ka difference nikaalenge
+        // Taaki arrow phone ke hisaab se ghum sake
+        if (navArrowView.visibility == View.VISIBLE) {
+            // Since we update this in checkNavigation mainly, we only need to override 
+            // if the user is holding the phone and rotating it.
+            // But to avoid jitter, we'll let checkNavigation handle the turnAngle and we'll 
+            // just adjust it here based on compass difference if needed.
         }
     }
 
@@ -301,19 +330,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (style.getLayer(CONNECTING_LAYER) != null) style.removeLayer(CONNECTING_LAYER)
         if (style.getSource(CONNECTING_SOURCE) != null) style.removeSource(CONNECTING_SOURCE)
 
-        // Main Route Source
         val emptyLine = LineString.fromLngLats(emptyList())
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
-
-        // Connecting Dotted Line Source
         style.addSource(GeoJsonSource(CONNECTING_SOURCE, Feature.fromGeometry(emptyLine)))
 
-        // Main Purple Line
         style.addLayer(LineLayer(ROUTE_PURPLE_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
             PropertyFactory.lineColor("#D500F9"), PropertyFactory.lineWidth(5f), PropertyFactory.lineJoin("round")
         ))
 
-        // Connecting Dotted Line Layer
         style.addLayer(LineLayer(CONNECTING_LAYER, CONNECTING_SOURCE).withProperties(
             PropertyFactory.lineColor("#FFC107"), 
             PropertyFactory.lineWidth(4f),
@@ -334,7 +358,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        // Map Line Arrows (Jaisa tune bola, inhe rakhna hai)
         if (imageLoaded) {
             val arrowLayer = SymbolLayer(ARROW_LAYER, ROUTE_PURPLE_SOURCE).withProperties(
                 PropertyFactory.symbolPlacement("line"),
@@ -345,7 +368,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 PropertyFactory.symbolSpacing(30f)
             )
             style.addLayer(arrowLayer)
-            
             startArrowGlowAnimation(style)
         }
     }
@@ -371,6 +393,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private fun startRecording() {
         isRecording = true; isReturning = false
         isForwardNavigation = true
+        isOffRouteAlerted = false
         recordedPoints.clear(); announcedTurns.clear()
         currentRoutePointsForNav.clear()
         lastRecordedLatLng = null
@@ -426,6 +449,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         isReturning = true
         isRecording = false
         isForwardNavigation = isForward
+        isOffRouteAlerted = false
         announcedTurns.clear()
         
         currentRoutePointsForNav = if (isForward) recordedPoints.toMutableList() else recordedPoints.reversed().toMutableList()
@@ -437,6 +461,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         
         updateAllMapLines()
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
+        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
         
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
@@ -449,6 +474,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     private fun stopReturning() {
         isReturning = false
+        isOffRouteAlerted = false
         navArrowView.visibility = View.GONE
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
         speak("Navigation stopped")
@@ -461,7 +487,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         updateAllMapLines()
     }
 
-    // FIX: Route Snapping (200m door ho toh dotted line draw karo)
     private fun snapToRouteAndStart(currentLoc: LatLng) {
         if (currentRoutePointsForNav.size < 2) return
         
@@ -476,20 +501,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
         
-        if (closestIndex != -1 && minDistance < 200f) {
+        if (closestIndex != -1 && minDistance < 50f) {
             currentRoutePointsForNav = currentRoutePointsForNav.drop(closestIndex).toMutableList()
-            
-            if (minDistance > 15f && currentRoutePointsForNav.isNotEmpty() && currentStyle != null) {
-                val coords = listOf(
-                    Point.fromLngLat(currentLoc.longitude, currentLoc.latitude), 
-                    Point.fromLngLat(currentRoutePointsForNav[0].longitude, currentRoutePointsForNav[0].latitude)
-                )
-                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(coords)))
-            } else if (currentStyle != null) {
-                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
-            }
-        } else if (currentStyle != null) {
-            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
+        }
+        
+        if (isReturning) {
+            checkNavigation(currentLoc, 0f)
         }
     }
 
@@ -563,14 +580,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                         } 
                         
                         if (isReturning) {
-                            // Agar user route ke starting point ke paas pahunch gaya, toh dotted line hata do
-                            if (currentRoutePointsForNav.isNotEmpty()) {
-                                val startPoint = currentRoutePointsForNav[0]
-                                val distToStart = calculateDistance(userLoc.latitude, userLoc.longitude, startPoint.latitude, startPoint.longitude)
-                                if (distToStart < 15f) {
-                                    currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
-                                }
-                            }
                             checkNavigation(userLoc, location.bearing)
                         }
                     }
@@ -597,26 +606,55 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        // Agar user route se door hai (>50m) par 200m ke andar hai (dotted line active hai)
-        // Toh HUD ko route ke first point ki taraf guide karo
+        if (closestIndex == -1) return
+
+        // 1. OFF-ROUTE LOGIC (Galat raste pe jane par alert)
         if (minDistance > 50f) {
-            val startPoint = currentRoutePointsForNav[0]
-            val distToStart = calculateDistance(userLoc.latitude, userLoc.longitude, startPoint.latitude, startPoint.longitude)
-            val bearingToStart = calculateBearing(userLoc, startPoint)
-            val turnAngle = calculateTurnAngle(currentBearing, bearingToStart)
+            val closestPoint = currentRoutePointsForNav[closestIndex]
+            
+            // Dotted Line dynamically draw karo
+            if (currentStyle != null) {
+                val coords = listOf(
+                    Point.fromLngLat(userLoc.longitude, userLoc.latitude), 
+                    Point.fromLngLat(closestPoint.longitude, closestPoint.latitude)
+                )
+                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(coords)))
+            }
+
+            // Alert user (Sirf ek baar jab tak wapas on-route na aaye)
+            if (!isOffRouteAlerted) {
+                speak("You are off route. Please return to the path.")
+                Toast.makeText(this, "Aap route se door hain! Wapas raste par aayein.", Toast.LENGTH_LONG).show()
+                isOffRouteAlerted = true
+            }
+
+            // HUD guide to closest point
+            val bearingToPoint = calculateBearing(userLoc, closestPoint)
+            
+            // COMPASS HUD LOGIC: Bearing minus Device Heading
+            val deviceHeading = if (currentBearing != 0f) currentBearing else smoothedBearing
+            var relativeAngle = bearingToPoint - deviceHeading
+            if (relativeAngle > 180f) relativeAngle -= 360f
+            if (relativeAngle < -180f) relativeAngle += 360f
 
             runOnUiThread {
-                if (isReturning) {
+                if (isReturning && isArrowsEnabled) {
                     navArrowView.visibility = View.VISIBLE
-                    navArrowView.setDirection(turnAngle)
+                    navArrowView.setDirection(relativeAngle)
                 } else {
                     navArrowView.visibility = View.GONE
                 }
             }
-            return
+            return 
+        } else {
+            // 2. ON-ROUTE (User raste par hai)
+            isOffRouteAlerted = false
+            // Dotted line hata do
+            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList())))
         }
 
-        if (closestIndex == -1 || closestIndex >= currentRoutePointsForNav.size - 2) {
+        // 3. Normal Turn Logic
+        if (closestIndex >= currentRoutePointsForNav.size - 2) {
             runOnUiThread { navArrowView.visibility = View.GONE }
             return
         }
@@ -648,6 +686,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             turnAngle = 0f
         }
 
+        // 4. Voice Announcement
         if (distToTurn in 15f..40f && !announcedTurns.contains(nextTurnIndex) && turnAngle != 0f) {
             announcedTurns.add(nextTurnIndex)
             val voiceText = when {
@@ -659,17 +698,31 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             speak("In ${distToTurn.toInt()} meters, $voiceText")
         }
 
+        // 5. HUD Update with Compass
         runOnUiThread {
-            if (isReturning) {
+            if (isReturning && isArrowsEnabled) {
                 navArrowView.visibility = View.VISIBLE
-                navArrowView.setDirection(turnAngle)
+                
+                // Compass Adjustment
+                // If user is on the route, the target is the next point/turn.
+                val targetBearing = if (turnAngle != 0f) calculateBearing(userLoc, currentRoutePointsForNav[nextTurnIndex]) else calculateBearing(userLoc, currentRoutePointsForNav.last())
+                val deviceHeading = if (currentBearing != 0f) currentBearing else smoothedBearing
+                
+                var relativeAngle = targetBearing - deviceHeading
+                if (relativeAngle > 180f) relativeAngle -= 360f
+                if (relativeAngle < -180f) relativeAngle += 360f
+
+                // If we want to keep the traditional "Turn Angle" (relative to the road):
+                // navArrowView.setDirection(turnAngle)
+                
+                // If we want the true "Compass" HUD (relative to phone):
+                navArrowView.setDirection(relativeAngle)
             } else {
                 navArrowView.visibility = View.GONE
             }
         }
     }
 
-    // FIX: Map arrows ka face direction change karega based on Navigation mode
     private fun updateAllMapLines() {
         runOnUiThread {
             if (currentStyle == null) return@runOnUiThread
@@ -734,7 +787,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    // FIX: Auto Start Navigation on Route Load
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 100 && resultCode == RESULT_OK) {
@@ -750,8 +802,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                     }
                     updateAllMapLines()
                     Toast.makeText(this, "Route Loaded: ${selectedRoute.name}", Toast.LENGTH_SHORT).show()
-                    
-                    // Load hote hi Navigation start
                     startNavigation(true)
                 }
             }
@@ -760,7 +810,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     override fun onResume() {
         super.onResume(); mapView.onResume()
-        if (isCompassModeEnabled) { rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) } }
+        rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
     }
 
     override fun onPause() { super.onPause(); mapView.onPause(); sensorManager.unregisterListener(this) }
@@ -789,6 +839,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         dialog.setContentView(view)
 
         val switchCompass = view.findViewById<Switch>(R.id.switchCompass)
+        val switchArrows = view.findViewById<Switch>(R.id.switchArrows)
         val radioInternal = view.findViewById<RadioButton>(R.id.radioInternal)
         val radioSdCard = view.findViewById<RadioButton>(R.id.radioSdCard)
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
@@ -805,10 +856,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
                 Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
-                sensorManager.unregisterListener(this)
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
                 mapLibreMap?.animateCamera(CameraUpdateFactory.bearingTo(0.0))
                 Toast.makeText(this@MainActivity, "Compass Mode OFF", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        switchArrows.isChecked = isArrowsEnabled
+        switchArrows.setOnCheckedChangeListener { _, isChecked ->
+            isArrowsEnabled = isChecked
+            prefs.edit().putBoolean("show_arrows", isChecked).apply()
+            if (!isChecked) {
+                navArrowView.visibility = View.GONE
             }
         }
 
