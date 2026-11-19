@@ -54,7 +54,6 @@ class NavigationArrowView @JvmOverloads constructor(
     // Smooth Rotation Function
     fun setDirection(angle: Float) {
         var targetAngle = angle
-        // Shortest path nikaalo (taaki 350 degree se 10 degree pe jate waat pura chakkar na lage)
         var diff = targetAngle - currentAngle
         if (diff > 180f) diff -= 360f
         if (diff < -180f) diff += 360f
@@ -64,7 +63,7 @@ class NavigationArrowView @JvmOverloads constructor(
 
         rotateAnimator?.cancel()
         rotateAnimator = ValueAnimator.ofFloat(currentAngle, targetAngle).apply {
-            duration = 250 // Smooth transition
+            duration = 250
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 currentAngle = it.animatedValue as Float
@@ -78,11 +77,15 @@ class NavigationArrowView @JvmOverloads constructor(
         super.onDraw(canvas)
 
         val centerX = width / 2f
-        val startY = height * 0.85f // Thoda niche se start
-        val endY = height * 0.15f
+        val centerY = height / 2f
+        
+        // Calculate total height of the arrows to center them vertically
+        val totalHeight = (arrowCount - 1) * arrowSpacing
+        val startY = centerY + (totalHeight / 2f)
 
         canvas.save()
-        canvas.rotate(currentAngle, centerX, startY)
+        // Rotate exactly around the center of the view to prevent clipping
+        canvas.rotate(currentAngle, centerX, centerY)
 
         for (i in 0 until arrowCount) {
             val yPos = startY - (i * arrowSpacing)
