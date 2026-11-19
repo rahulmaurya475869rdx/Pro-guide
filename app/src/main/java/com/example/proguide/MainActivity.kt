@@ -109,6 +109,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private var lastRecordedLatLng: LatLng? = null
     private var kalmanFilter = KalmanLatLong()
 
+    // Navigation Arrows UI
+    private lateinit var navArrowView: NavigationArrowView
+
     private val ROUTE_PURPLE_SOURCE = "route-purple-source"
     private val ROUTE_PURPLE_LAYER = "route-purple-layer"
     private val ARROW_LAYER = "route-arrows-layer"
@@ -150,6 +153,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         btnVoice = findViewById(R.id.btnVoice)
         btnSatellite = findViewById(R.id.btnSatellite)
         tvSatelliteIcon = findViewById(R.id.tvSatelliteIcon)
+        navArrowView = findViewById(R.id.navArrowView) // Init Arrow View
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
         mapView.onCreate(savedInstanceState)
@@ -185,7 +189,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        // FIX: Satellite Mode Crash Fix
+        // Satellite Mode Crash Fix
         btnSatellite.setOnClickListener {
             mapLibreMap?.let { map ->
                 // 1. Crash se bachne ke liye animator ko pehle cancel karo
@@ -337,7 +341,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         arrowAnimator?.repeatMode = ValueAnimator.REVERSE
         arrowAnimator?.addUpdateListener { animation ->
             val alpha = animation.animatedValue as Float
-            // Check karo ki style abhi bhi active hai (Crash Fix)
             if (currentStyle === style) {
                 style.getLayerAs<SymbolLayer>(ARROW_LAYER)?.setProperties(
                     PropertyFactory.iconOpacity(alpha),
@@ -357,6 +360,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         RouteFileManager.startNewRoute() // FileManager clear karo
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
+        navArrowView.visibility = View.GONE // Recording shuru hote hi arrows hide
         speak("Recording started")
         Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
     }
@@ -403,7 +407,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         currentRoutePointsForNav = recordedPoints.reversed().toMutableList()
         
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
-        speak("Return mode started. Follow the blue arrows.")
+        speak("Return mode started. Follow the glowing arrows.")
         Toast.makeText(this@MainActivity, "Return Mode ON", Toast.LENGTH_SHORT).show()
         updateAllMapLines()
         
@@ -412,6 +416,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     private fun stopReturning() {
         isReturning = false
+        navArrowView.visibility = View.GONE // Arrows Hide
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
         speak("Return mode stopped")
         Toast.makeText(this@MainActivity, "Return Mode OFF", Toast.LENGTH_SHORT).show()
@@ -480,7 +485,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                             }
                             if (shouldRecord) {
                                 recordedPoints.add(userLoc)
-                                // FIX: FileManager me point pass karo taaki save hone par khaali na ho
                                 RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
                                 
                                 lastRecordedLatLng = userLoc
@@ -498,11 +502,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     private fun checkNavigation(userLoc: LatLng, currentBearing: Float) {
-        if (currentRoutePointsForNav.size < 2) return
+        if (currentRoutePointsForNav.size < 2) {
+            runOnUiThread { navArrowView.visibility = View.GONE }
+            return
+        }
 
         var closestIndex = -1
         var minDistance = Float.MAX_VALUE
         
+        // 1. Route par sabse paas wala point dhundo
         for (i in 0 until currentRoutePointsForNav.size - 1) {
             val point = currentRoutePointsForNav[i]
             val dist = calculateDistance(userLoc.latitude, userLoc.longitude, point.latitude, point.longitude)
@@ -512,30 +520,61 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             }
         }
 
-        if (minDistance > 50f) return
+        // Agar user route se door hai, toh arrows hide kar do
+        if (minDistance > 50f || closestIndex == -1 || closestIndex >= currentRoutePointsForNav.size - 2) {
+            runOnUiThread { navArrowView.visibility = View.GONE }
+            return
+        }
 
-        if (closestIndex != -1 && closestIndex < currentRoutePointsForNav.size - 2) {
-            val nextPoint = currentRoutePointsForNav[closestIndex + 1]
-            val pointAfterNext = currentRoutePointsForNav[closestIndex + 2]
+        // 2. Agla turn dhundo
+        var nextTurnIndex = closestIndex
+        var turnAngle = 0f
+        var distToTurn = 0f
 
-            val bearing1 = calculateBearing(currentRoutePointsForNav[closestIndex], nextPoint)
-            val bearing2 = calculateBearing(nextPoint, pointAfterNext)
-            
-            val turnAngle = calculateTurnAngle(bearing1, bearing2)
-            val distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, nextPoint.latitude, nextPoint.longitude)
+        for (i in closestIndex until currentRoutePointsForNav.size - 2) {
+            val p1 = currentRoutePointsForNav[i]
+            val p2 = currentRoutePointsForNav[i + 1]
+            val p3 = currentRoutePointsForNav[i + 2]
 
-            if (distToTurn in 15f..25f && !announcedTurns.contains(closestIndex)) {
-                announcedTurns.add(closestIndex)
-                
-                val absAngle = abs(turnAngle)
-                var voiceText = ""
-                when {
-                    absAngle < 20f -> voiceText = "Continue straight"
-                    absAngle in 20f..45f -> voiceText = if (turnAngle > 0) "Slight left ahead" else "Slight right ahead"
-                    absAngle in 45f..120f -> voiceText = if (turnAngle > 0) "Turn left" else "Turn right"
-                    else -> voiceText = if (turnAngle > 0) "Sharp left" else "Sharp right"
-                }
-                speak("In ${distToTurn.toInt()} meters, $voiceText")
+            val bearing1 = calculateBearing(p1, p2)
+            val bearing2 = calculateBearing(p2, p3)
+            val angle = calculateTurnAngle(bearing1, bearing2)
+
+            if (abs(angle) > 15f) { // Turn mil gaya
+                nextTurnIndex = i + 1
+                turnAngle = angle
+                distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, p2.latitude, p2.longitude)
+                break
+            }
+        }
+
+        if (nextTurnIndex == closestIndex) { // Koi turn nahi, seedha jana hai
+            val lastPoint = currentRoutePointsForNav.last()
+            distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, lastPoint.latitude, lastPoint.longitude)
+            turnAngle = 0f
+        }
+
+        // 3. Voice Announcement
+        if (distToTurn in 15f..40f && !announcedTurns.contains(nextTurnIndex) && turnAngle != 0f) {
+            announcedTurns.add(nextTurnIndex)
+            val voiceText = when {
+                abs(turnAngle) < 20f -> "Continue straight"
+                abs(turnAngle) in 20f..45f -> if (turnAngle > 0) "Slight left" else "Slight right"
+                abs(turnAngle) in 45f..120f -> if (turnAngle > 0) "Turn left" else "Turn right"
+                else -> if (turnAngle > 0) "Sharp left" else "Sharp right"
+            }
+            speak("In ${distToTurn.toInt()} meters, $voiceText")
+        }
+
+        // 4. Update Screen Arrows
+        runOnUiThread {
+            if (isReturning) {
+                navArrowView.visibility = View.VISIBLE
+                // Arrow view ko turnAngle pass karo. Positive = Right, Negative = Left.
+                // Agar turnAngle 0 hai (straight), toh arrows seedhe point karenge.
+                navArrowView.setDirection(turnAngle) 
+            } else {
+                navArrowView.visibility = View.GONE
             }
         }
     }
@@ -603,7 +642,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    // FIX: SavedRoutesActivity se route load karne ke liye result handler
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 100 && resultCode == RESULT_OK) {
@@ -642,7 +680,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     
     override fun onSaveInstanceState(outState: Bundle) { 
         super.onSaveInstanceState(outState); 
-        // FIX: Phone ghumne par points save karo
         val lats = DoubleArray(recordedPoints.size) { recordedPoints[it].latitude }
         val lngs = DoubleArray(recordedPoints.size) { recordedPoints[it].longitude }
         outState.putDoubleArray("saved_lats", lats)
