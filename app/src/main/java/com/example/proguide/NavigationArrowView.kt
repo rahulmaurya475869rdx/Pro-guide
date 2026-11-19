@@ -17,7 +17,7 @@ class NavigationArrowView @JvmOverloads constructor(
 
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 12f
+        strokeWidth = 14f
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
@@ -29,27 +29,30 @@ class NavigationArrowView @JvmOverloads constructor(
 
     // Arrows ki settings
     private val arrowCount = 4
-    private val arrowSpacing = 50f
-    private val arrowWidth = 40f
-    private val arrowHeight = 30f
+    private val arrowSpacing = 45f
+    private val arrowWidth = 35f
+    private val arrowHeight = 25f
 
     init {
+        // Shadow/Glow ke liye software layer zaroori hai
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+
         // Animation jo niche se upar glow leke jayegi
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1500L
+            duration = 1200L
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
             addUpdateListener { animation ->
                 animationProgress = animation.animatedValue as Float
-                invalidate() // Redraw
+                invalidate() // Redraw for animation
             }
             start()
         }
     }
 
+    // Direction set karne ke liye function (0 = straight, positive = right, negative = left)
     fun setDirection(angle: Float) {
-        // Smoothly update angle if needed, or direct set
-        if (abs(currentAngle - angle) > 5f) {
+        if (abs(currentAngle - angle) > 2f) {
             currentAngle = angle
             invalidate()
         }
@@ -63,28 +66,32 @@ class NavigationArrowView @JvmOverloads constructor(
         val endY = height * 0.2f   // Upar tak
 
         canvas.save()
-        // Center point ke around rotate karo
-        canvas.rotate(-currentAngle, centerX, startY)
+        // Center point ke around rotate karo (Map direction ke hisaab se)
+        canvas.rotate(currentAngle, centerX, startY)
 
         for (i in 0 until arrowCount) {
+            // i=0 sabse niche wala arrow, i=3 sabse upar wala
             val yPos = startY - (i * arrowSpacing)
             
-            // Glow Effect: Jo arrow animation ke current position ke paas hai, wo bright hoga
-            val arrowProgress = 1f - (i.toFloat() / arrowCount)
+            // Light niche se upar travel karegi
+            val arrowProgress = i.toFloat() / (arrowCount - 1) 
             val distToAnim = abs(animationProgress - arrowProgress)
             
             // Glow intensity calculation
             val glowAlpha = when {
-                distToAnim < 0.15f -> 255 // Full bright
-                distToAnim < 0.3f -> 150  // Medium
-                else -> 60                // Dim
+                distToAnim < 0.15f -> 255 // Full bright (Jahan light hai)
+                distToAnim < 0.3f -> 120  // Medium glow
+                else -> 40                // Dim (baaki arrows)
             }
 
-            arrowPaint.color = Color.argb(glowAlpha, 0, 150, 255) // Blue Glow
+            // Blue Color Glow
+            arrowPaint.color = Color.argb(glowAlpha, 0, 160, 255) 
+            
+            // Shadow layer for glowing effect
             arrowPaint.setShadowLayer(
                 if (glowAlpha == 255) 25f else 10f, 
                 0f, 0f, 
-                Color.argb(glowAlpha, 0, 150, 255)
+                Color.argb(glowAlpha, 0, 160, 255)
             )
 
             // Arrow Path Draw karo (^ shape)
