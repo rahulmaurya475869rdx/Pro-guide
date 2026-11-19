@@ -16,6 +16,7 @@
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
 
+    <!-- COMPASS SWITCH -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,6 +34,28 @@
 
         <Switch
             android:id="@+id/switchCompass"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
+
+    <!-- NAYA: GLOWING ARROWS SWITCH -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="16dp">
+        
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Show Glowing Arrows (HUD)"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"/>
+
+        <Switch
+            android:id="@+id/switchArrows"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"/>
     </LinearLayout>
@@ -98,7 +121,6 @@
             android:layout_marginStart="12dp"/>
     </LinearLayout>
 
-    <!-- NAYA BUTTON: View Saved Routes -->
     <LinearLayout
         android:id="@+id/btnViewRoutes"
         android:layout_width="match_parent"
@@ -124,7 +146,6 @@
             android:layout_marginStart="12dp"/>
     </LinearLayout>
 
-    <!-- DELETE BUTTON -->
     <LinearLayout
         android:id="@+id/btnDeleteData"
         android:layout_width="match_parent"
