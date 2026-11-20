@@ -6,8 +6,10 @@ import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -18,16 +20,15 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -40,11 +41,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -63,10 +60,9 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
-import java.util.Locale
 import kotlin.math.abs
 
-class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnInitListener {
+class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var mapView: MapView
     private var mapLibreMap: MapLibreMap? = null
@@ -92,7 +88,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private var isCompassModeEnabled = false
     private var isArrowsEnabled = true
     
-    // SAF Folder setup
     private val REQUEST_CODE_SAF = 42
     private val REQUEST_CODE_ROUTES = 100
 
@@ -100,25 +95,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private var rotationVectorSensor: Sensor? = null
     @Volatile private var smoothedBearing: Float = 0f
 
-    // Camera override flags (My Location fix)
     private var isUserMovingMap = false
     private val handler = Handler(Looper.getMainLooper())
 
     private var isRecording = false
     private var isReturning = false
     private var isForwardNavigation = true 
-    private var isOffRouteAlerted = false
     private var selectedVehicle = "Car"
     private val recordedPoints = mutableListOf<LatLng>() 
     
     private var isVoiceEnabled = true
-    private lateinit var tts: TextToSpeech
-    private var ttsReady = false
-    private val announcedTurns = mutableSetOf<Int>()
+    private var currentTargetBearing: Float = 0f
     private var currentRoutePointsForNav = mutableListOf<LatLng>()
-
-    private var lastRecordedLatLng: LatLng? = null
-    private var kalmanFilter = KalmanLatLong()
 
     private lateinit var navArrowView: NavigationArrowView
 
@@ -128,6 +116,44 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private val CONNECTING_SOURCE = "connecting-source"
     private val CONNECTING_LAYER = "connecting-layer"
     private var arrowAnimator: ValueAnimator? = null
+
+    // BROADCAST RECEIVER (Receives data from Service)
+    private val locationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == LocationTrackingService.BROADCAST_LOCATION) {
+                val lat = intent.getDoubleExtra(LocationTrackingService.EXTRA_LAT, 0.0)
+                val lng = intent.getDoubleExtra(LocationTrackingService.EXTRA_LNG, 0.0)
+                currentTargetBearing = intent.getFloatExtra(LocationTrackingService.EXTRA_TARGET_BEARING, 0f)
+                val showArrows = intent.getBooleanExtra(LocationTrackingService.EXTRA_SHOW_ARROWS, false)
+                val isRec = intent.getBooleanExtra(LocationTrackingService.EXTRA_IS_RECORDING, false)
+
+                val userLoc = LatLng(lat, lng)
+
+                if (isFirstLocationFix && mapLibreMap != null) {
+                    val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
+                    mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
+                    isFirstLocationFix = false
+                }
+
+                if (isRec) {
+                    if (recordedPoints.isEmpty() || calculateDistance(recordedPoints.last().latitude, recordedPoints.last().longitude, lat, lng) > 5f) {
+                        recordedPoints.add(userLoc)
+                        updateAllMapLines()
+                    }
+                }
+
+                if (isReturning) {
+                    if (showArrows && isArrowsEnabled) {
+                        navArrowView.visibility = View.VISIBLE
+                        // UI thread pe compass calculation karke arrow ghumayenge
+                        updateHudArrow(userLoc)
+                    } else {
+                        navArrowView.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -144,8 +170,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 }
             }
         }
-
-        tts = TextToSpeech(this, this)
 
         prefs = getSharedPreferences(StorageHelper.PREFS_NAME, Context.MODE_PRIVATE)
         isCompassModeEnabled = prefs.getBoolean("compass_mode", false)
@@ -175,20 +199,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         updateStatusUI(dotGps, pulseGps, "#F44336")
         updateStatusUI(dotInternet, pulseInternet, "#F44336")
 
-        if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+        // Permission Check
+        val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1)
         } else {
             setupMap()
-            startLocationUpdates()
             monitorInternetConnection()
             startPulseAnimations() 
         }
 
-        // MY LOCATION FIX
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
-            isUserMovingMap = true // Sensor ko temporarily pause karo
+            isUserMovingMap = true 
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
-            handler.postDelayed({ isUserMovingMap = false }, 2500) // 2.5 sec baad sensor wapas on
+            handler.postDelayed({ isUserMovingMap = false }, 2500) 
         }
 
         btnVoice.setOnClickListener {
@@ -196,7 +224,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (isVoiceEnabled) {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
-                speak("Voice guidance on")
             } else {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
@@ -240,10 +267,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (isReturning) stopReturning() else startReturning()
         }
 
-        // Agar folder select nahi kiya hai, toh pehli baar me maango
         if (StorageHelper.getFolderUri(this) == null) {
             showFolderSelectionDialog()
         }
+    }
+
+    private fun updateHudArrow(userLoc: LatLng) {
+        var relativeAngle = currentTargetBearing - smoothedBearing
+        if (relativeAngle > 180f) relativeAngle -= 360f
+        if (relativeAngle < -180f) relativeAngle += 360f
+        navArrowView.setDirection(relativeAngle)
     }
 
     private fun showFolderSelectionDialog() {
@@ -259,7 +292,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             .show()
     }
 
-    // SAF Result Handler
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
@@ -291,22 +323,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.getDefault())
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                tts.language = Locale.US
-            }
-            ttsReady = true
-        }
-    }
-
-    private fun speak(text: String) {
-        if (isVoiceEnabled && ttsReady) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
-        }
-    }
-
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
             val rotationMatrix = FloatArray(9)
@@ -323,7 +339,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
             
-            // Update Map Rotation if user enabled it AND map not currently moving via button
             if (isCompassModeEnabled && !isUserMovingMap) {
                 mapLibreMap?.let { map ->
                     val pos = CameraPosition.Builder(map.cameraPosition).bearing(smoothedBearing.toDouble()).build()
@@ -331,41 +346,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 }
             }
 
-            if (isReturning && isArrowsEnabled) {
-                updateHudCompassDirection()
+            // Compass se HUD arrow update karo
+            if (isReturning && isArrowsEnabled && navArrowView.visibility == View.VISIBLE) {
+                var relativeAngle = currentTargetBearing - smoothedBearing
+                if (relativeAngle > 180f) relativeAngle -= 360f
+                if (relativeAngle < -180f) relativeAngle += 360f
+                navArrowView.setDirection(relativeAngle)
             }
-        }
-    }
-
-    private fun updateHudCompassDirection() {
-        if (!isReturning || currentRoutePointsForNav.isEmpty() || !isArrowsEnabled) return
-        
-        val userLoc = LatLng(kalmanFilter.getLat(), kalmanFilter.getLng())
-        var closestIndex = -1
-        var minDistance = Float.MAX_VALUE
-        
-        for (i in 0 until currentRoutePointsForNav.size - 1) {
-            val dist = calculateDistance(userLoc.latitude, userLoc.longitude, currentRoutePointsForNav[i].latitude, currentRoutePointsForNav[i].longitude)
-            if (dist < minDistance) {
-                minDistance = dist
-                closestIndex = i
-            }
-        }
-
-        if (closestIndex == -1) return
-
-        val targetPoint = if (minDistance > 50f) currentRoutePointsForNav[closestIndex] 
-                          else currentRoutePointsForNav[minOf(closestIndex + 1, currentRoutePointsForNav.size - 1)]
-
-        val bearingToPoint = calculateBearing(userLoc, targetPoint)
-        
-        var relativeAngle = bearingToPoint - smoothedBearing
-        if (relativeAngle > 180f) relativeAngle -= 360f
-        if (relativeAngle < -180f) relativeAngle += 360f
-
-        runOnUiThread {
-            navArrowView.visibility = View.VISIBLE
-            navArrowView.setDirection(relativeAngle)
         }
     }
 
@@ -469,25 +456,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private fun startRecording() {
         isRecording = true; isReturning = false
         isForwardNavigation = true
-        isOffRouteAlerted = false
-        recordedPoints.clear(); announcedTurns.clear()
+        recordedPoints.clear()
         currentRoutePointsForNav.clear()
-        lastRecordedLatLng = null
-        kalmanFilter = KalmanLatLong()
         RouteFileManager.startNewRoute()
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
         navArrowView.visibility = View.GONE
-        speak("Recording started")
-        Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
-        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
+        Toast.makeText(this@MainActivity, "Recording Started (Background)", Toast.LENGTH_SHORT).show()
+        
+        val serviceIntent = Intent(this, LocationTrackingService::class.java)
+        serviceIntent.action = LocationTrackingService.ACTION_START_RECORDING
+        serviceIntent.putExtra("vehicle", selectedVehicle)
+        ContextCompat.startForegroundService(this, serviceIntent)
     }
 
     private fun stopRecording() {
         isRecording = false
         btnRecord.setImageResource(android.R.drawable.ic_media_play)
         btnReturn.visibility = View.VISIBLE 
-        speak("Recording stopped")
+        
+        val serviceIntent = Intent(this, LocationTrackingService::class.java)
+        serviceIntent.action = LocationTrackingService.ACTION_STOP_SERVICE
+        startService(serviceIntent)
         
         if (recordedPoints.isNotEmpty()) {
             val builder = AlertDialog.Builder(this@MainActivity)
@@ -525,65 +515,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         isReturning = true
         isRecording = false
         isForwardNavigation = isForward
-        isOffRouteAlerted = false
-        announcedTurns.clear()
         
         currentRoutePointsForNav = if (isForward) recordedPoints.toMutableList() else recordedPoints.reversed().toMutableList()
         
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.VISIBLE
-        speak(if (isForward) "Navigation started." else "Return mode started.")
-        Toast.makeText(this, "Navigation ON", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Navigation ON (Background)", Toast.LENGTH_SHORT).show()
         
         updateAllMapLines()
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
-        currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                if (loc != null) {
-                    snapToRouteAndStart(LatLng(loc.latitude, loc.longitude))
-                }
-            }
-        }
+        val serviceIntent = Intent(this, LocationTrackingService::class.java)
+        serviceIntent.action = LocationTrackingService.ACTION_START_NAVIGATION
+        serviceIntent.putParcelableArrayListExtra("route_points", ArrayList(currentRoutePointsForNav))
+        ContextCompat.startForegroundService(this, serviceIntent)
     }
 
     private fun stopReturning() {
         isReturning = false
-        isOffRouteAlerted = false
         navArrowView.visibility = View.GONE
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
-        speak("Navigation stopped")
         Toast.makeText(this@MainActivity, "Navigation OFF", Toast.LENGTH_SHORT).show()
         
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("none"))
         currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         
+        val serviceIntent = Intent(this, LocationTrackingService::class.java)
+        serviceIntent.action = LocationTrackingService.ACTION_STOP_SERVICE
+        startService(serviceIntent)
+        
         isForwardNavigation = true
         updateAllMapLines()
-    }
-
-    private fun snapToRouteAndStart(currentLoc: LatLng) {
-        if (currentRoutePointsForNav.size < 2) return
-        
-        var closestIndex = -1
-        var minDistance = Float.MAX_VALUE
-        
-        for (i in currentRoutePointsForNav.indices) {
-            val dist = calculateDistance(currentLoc.latitude, currentLoc.longitude, currentRoutePointsForNav[i].latitude, currentRoutePointsForNav[i].longitude)
-            if (dist < minDistance) {
-                minDistance = dist
-                closestIndex = i
-            }
-        }
-        
-        if (closestIndex != -1 && minDistance < 50f) {
-            currentRoutePointsForNav = currentRoutePointsForNav.drop(closestIndex).toMutableList()
-        }
-        
-        if (isReturning) {
-            checkNavigation(currentLoc)
-        }
     }
 
     private fun setupMap() {
@@ -609,144 +571,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
-
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
-            .setMinUpdateIntervalMillis(1000L)
-            .build()
-
-        fusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                for (location in locationResult.locations) {
-                    val accuracy: Float = location.accuracy
-                    
-                    when {
-                        accuracy < 10f -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#4CAF50") }
-                        accuracy < 20f -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#2196F3") }
-                        accuracy < 50f -> { tvGpsStatus.text = "Avg (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#FFC107") }
-                        else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#F44336") }
-                    }
-
-                    if (accuracy <= 30f) { 
-                        kalmanFilter.process(location.latitude, location.longitude, accuracy, System.currentTimeMillis())
-                        val userLoc = LatLng(kalmanFilter.getLat(), kalmanFilter.getLng())
-                        
-                        if (isFirstLocationFix && mapLibreMap != null) {
-                            val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
-                            mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
-                            isFirstLocationFix = false
-                        }
-
-                        if (isRecording) {
-                            var shouldRecord = false
-                            if (lastRecordedLatLng == null) shouldRecord = true
-                            else {
-                                val dist = calculateDistance(lastRecordedLatLng!!.latitude, lastRecordedLatLng!!.longitude, userLoc.latitude, userLoc.longitude)
-                                if (dist > getMinDistance()) shouldRecord = true
-                            }
-                            if (shouldRecord) {
-                                recordedPoints.add(userLoc)
-                                RouteFileManager.appendPoint(userLoc.latitude, userLoc.longitude, "#D500F9")
-                                
-                                lastRecordedLatLng = userLoc
-                                updateAllMapLines()
-                            }
-                        } 
-                        
-                        if (isReturning) {
-                            checkNavigation(userLoc)
-                        }
-                    }
-                }
-            }
-        }, Looper.getMainLooper())
-    }
-
-    private fun checkNavigation(userLoc: LatLng) {
-        if (currentRoutePointsForNav.size < 2) {
-            runOnUiThread { navArrowView.visibility = View.GONE }
-            return
-        }
-
-        var closestIndex = -1
-        var minDistance = Float.MAX_VALUE
-        
-        for (i in 0 until currentRoutePointsForNav.size - 1) {
-            val point = currentRoutePointsForNav[i]
-            val dist = calculateDistance(userLoc.latitude, userLoc.longitude, point.latitude, point.longitude)
-            if (dist < minDistance) {
-                minDistance = dist
-                closestIndex = i
-            }
-        }
-
-        if (closestIndex == -1) return
-
-        if (minDistance > 50f) {
-            val closestPoint = currentRoutePointsForNav[closestIndex]
-            
-            if (currentStyle != null) {
-                val coords = listOf(
-                    Point.fromLngLat(userLoc.longitude, userLoc.latitude), 
-                    Point.fromLngLat(closestPoint.longitude, closestPoint.latitude)
-                )
-                currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(coords)))
-            }
-
-            if (!isOffRouteAlerted) {
-                speak("You are off route. Please return to the path.")
-                Toast.makeText(this, "Aap route se door hain! Wapas raste par aayein.", Toast.LENGTH_LONG).show()
-                isOffRouteAlerted = true
-            }
-            return 
-        } else {
-            isOffRouteAlerted = false
-            currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
-        }
-
-        if (closestIndex >= currentRoutePointsForNav.size - 2) return
-
-        var nextTurnIndex = closestIndex
-        var turnAngle = 0f
-        var distToTurn = 0f
-
-        for (i in closestIndex until currentRoutePointsForNav.size - 2) {
-            val p1 = currentRoutePointsForNav[i]
-            val p2 = currentRoutePointsForNav[i + 1]
-            val p3 = currentRoutePointsForNav[i + 2]
-
-            val bearing1 = calculateBearing(p1, p2)
-            val bearing2 = calculateBearing(p2, p3)
-            val angle = calculateTurnAngle(bearing1, bearing2)
-
-            if (abs(angle) > 15f) { 
-                nextTurnIndex = i + 1
-                turnAngle = angle
-                distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, p2.latitude, p2.longitude)
-                break
-            }
-        }
-
-        if (nextTurnIndex == closestIndex) { 
-            val lastPoint = currentRoutePointsForNav.last()
-            distToTurn = calculateDistance(userLoc.latitude, userLoc.longitude, lastPoint.latitude, lastPoint.longitude)
-            turnAngle = 0f
-        }
-
-        if (distToTurn in 15f..40f && !announcedTurns.contains(nextTurnIndex) && turnAngle != 0f) {
-            announcedTurns.add(nextTurnIndex)
-            val voiceText = when {
-                abs(turnAngle) < 20f -> "Continue straight"
-                abs(turnAngle) in 20f..45f -> if (turnAngle > 0) "Slight left" else "Slight right"
-                abs(turnAngle) in 45f..120f -> if (turnAngle > 0) "Turn left" else "Turn right"
-                else -> if (turnAngle > 0) "Sharp left" else "Sharp right"
-            }
-            speak("In ${distToTurn.toInt()} meters, $voiceText")
-        }
-    }
-
     private fun updateAllMapLines() {
         runOnUiThread {
             if (currentStyle == null) return@runOnUiThread
@@ -759,29 +583,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    private fun calculateBearing(start: LatLng, end: LatLng): Float {
-        val lat1 = Math.toRadians(start.latitude)
-        val lon1 = Math.toRadians(start.longitude)
-        val lat2 = Math.toRadians(end.latitude)
-        val lon2 = Math.toRadians(end.longitude)
-        val dLon = lon2 - lon1
-        val y = Math.sin(dLon) * Math.cos(lat2)
-        val x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
-        return ((Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0).toFloat()
-    }
-
-    private fun calculateTurnAngle(bearing1: Float, bearing2: Float): Float {
-        var diff = bearing2 - bearing1
-        if (diff > 180f) diff -= 360f
-        if (diff < -180f) diff += 360f
-        return diff 
-    }
-
-    private fun getMinDistance(): Float = when(selectedVehicle) { "Walk" -> 10f; "Cycle" -> 15f; "Bike" -> 20f; "Car" -> 30f; else -> 15f }
-
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val startLoc = Location("start").apply { latitude = lat1; longitude = lon1 }
-        val endLoc = Location("end").apply { latitude = lat2; longitude = lon2 }
+        val startLoc = android.location.Location("start").apply { latitude = lat1; longitude = lon1 }
+        val endLoc = android.location.Location("end").apply { latitude = lat2; longitude = lon2 }
         return startLoc.distanceTo(endLoc)
     }
 
@@ -806,17 +610,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            setupMap(); startLocationUpdates(); monitorInternetConnection(); startPulseAnimations()
+        if (requestCode == 1) {
+            setupMap(); monitorInternetConnection(); startPulseAnimations()
         }
     }
 
     override fun onResume() {
         super.onResume(); mapView.onResume()
+        val filter = IntentFilter(LocationTrackingService.BROADCAST_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(locationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(locationReceiver, filter)
+        }
         rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
     }
 
-    override fun onPause() { super.onPause(); mapView.onPause(); sensorManager.unregisterListener(this) }
+    override fun onPause() { 
+        super.onPause(); mapView.onPause(); sensorManager.unregisterListener(this) 
+        unregisterReceiver(locationReceiver)
+    }
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onStop() { super.onStop(); mapView.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
@@ -824,7 +637,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     override fun onDestroy() {
         arrowAnimator?.cancel()
         handler.removeCallbacksAndMessages(null)
-        if (this::tts.isInitialized) { tts.stop(); tts.shutdown() }
         super.onDestroy(); mapView.onDestroy()
     }
     
@@ -889,7 +701,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         btnDownload.setOnClickListener {
             mapLibreMap?.let { map ->
                 val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                // Note: MapLibre internally stores map tiles in App Specific folder. SAF cannot be used for Map tiles currently.
                 OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload, false)
                 dialog.dismiss()
             }
