@@ -44,7 +44,7 @@ object OfflineMapManager {
             object : OfflineManager.CreateOfflineRegionCallback {
                 override fun onCreate(offlineRegion: OfflineRegion) {
                     offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
-                    mainHandler.post { Toast.makeText(context, "Download Shuru (${if(useSdCard) "SD" else "Phone"})!", Toast.LENGTH_LONG).show() }
+                    mainHandler.post { Toast.makeText(context, "Download Shuru (Internal Memory)!", Toast.LENGTH_LONG).show() }
 
                     offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
                         override fun onStatusChanged(status: OfflineRegionStatus) {
@@ -52,8 +52,13 @@ object OfflineMapManager {
                                 mainHandler.post { Toast.makeText(context, "Area Download Complete!", Toast.LENGTH_LONG).show() }
                                 offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
                                 
-                                val mapDir = StorageHelper.getMapsDir(context, useSdCard)
-                                val dummyFile = File(mapDir, "map_downloaded_${System.currentTimeMillis()}.tmp")
+                                // MapLibre ke maps internal storage me save hote hain. 
+                                // SAF URI yahan support nahi karta, isliye dummy file internal me hi bana rahe hain size track karne ke liye.
+                                val mapDir = context.getExternalFilesDir(null) ?: context.filesDir
+                                val proGuideMapsDir = File(mapDir, "ProGuide/Maps")
+                                if (!proGuideMapsDir.exists()) proGuideMapsDir.mkdirs()
+                                
+                                val dummyFile = File(proGuideMapsDir, "map_downloaded_${System.currentTimeMillis()}.tmp")
                                 try {
                                     dummyFile.createNewFile()
                                     val writer = FileWriter(dummyFile)
