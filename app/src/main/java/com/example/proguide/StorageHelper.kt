@@ -1,65 +1,82 @@
 package com.example.proguide
 
 import android.content.Context
-import java.io.File
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 
 object StorageHelper {
+    
+    // SharedPreferences me folder ka URI save karenge
+    const val PREFS_NAME = "ProGuidePrefs"
+    const val KEY_FOLDER_URI = "saf_folder_uri"
 
-    fun getBaseDir(context: Context, useSdCard: Boolean): File {
-        val dirs = context.getExternalFilesDirs(null)
-        val base = if (useSdCard && dirs.size > 1 && dirs[1] != null) dirs[1] else dirs[0]
-        return base ?: context.filesDir
+    fun getFolderUri(context: Context): Uri? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val uriString = prefs.getString(KEY_FOLDER_URI, null)
+        return if (uriString != null) Uri.parse(uriString) else null
     }
 
-    fun getRoutesDir(context: Context, useSdCard: Boolean): File {
-        val dir = File(getBaseDir(context, useSdCard), "ProGuide/Routes")
-        if (!dir.exists()) dir.mkdirs()
-        return dir
+    fun saveFolderUri(context: Context, uri: Uri) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
     }
 
-    fun getMapsDir(context: Context, useSdCard: Boolean): File {
-        val dir = File(getBaseDir(context, useSdCard), "ProGuide/Maps")
-        if (!dir.exists()) dir.mkdirs()
-        return dir
+    fun getRootDocumentFile(context: Context): DocumentFile? {
+        val uri = getFolderUri(context) ?: return null
+        return DocumentFile.fromTreeUri(context, uri)
     }
 
-    fun getFolderSizeInMB(dir: File): String {
+    fun getRoutesDir(context: Context): DocumentFile? {
+        val root = getRootDocumentFile(context) ?: return null
+        var routesDir = root.findFile("Routes")
+        if (routesDir == null || !routesDir.isDirectory) {
+            routesDir = root.createDirectory("Routes")
+        }
+        return routesDir
+    }
+
+    fun getMapsDir(context: Context): DocumentFile? {
+        val root = getRootDocumentFile(context) ?: return null
+        var mapsDir = root.findFile("Maps")
+        if (mapsDir == null || !mapsDir.isDirectory) {
+            mapsDir = root.createDirectory("Maps")
+        }
+        return mapsDir
+    }
+
+    fun getFolderSizeInMB(dir: DocumentFile?): String {
+        if (dir == null || !dir.exists()) return "0.00 MB"
         var size: Long = 0
-        if (dir.exists()) {
-            val files = dir.listFiles()
-            if (files != null) {
-                for (file in files) {
-                    size += if (file.isDirectory) getFolderSizeRecursive(file) else file.length()
-                }
+        val files = dir.listFiles()
+        for (file in files) {
+            size += if (file.isDirectory) {
+                getFolderSizeRecursive(file)
+            } else {
+                file.length()
             }
         }
         val sizeInMB = size.toDouble() / (1024 * 1024)
         return String.format("%.2f MB", sizeInMB)
     }
 
-    private fun getFolderSizeRecursive(dir: File): Long {
+    private fun getFolderSizeRecursive(dir: DocumentFile): Long {
         var size: Long = 0
         val files = dir.listFiles()
-        if (files != null) {
-            for (file in files) {
-                size += if (file.isDirectory) getFolderSizeRecursive(file) else file.length()
-            }
+        for (file in files) {
+            size += if (file.isDirectory) getFolderSizeRecursive(file) else file.length()
         }
         return size
     }
 
-    fun deleteFolderContents(dir: File): Boolean {
+    fun deleteFolderContents(dir: DocumentFile?): Boolean {
+        if (dir == null) return false
         var deleted = true
-        if (dir.exists()) {
-            val files = dir.listFiles()
-            if (files != null) {
-                for (file in files) {
-                    if (file.isDirectory) {
-                        if (!deleteFolderContents(file)) deleted = false
-                    } else {
-                        if (!file.delete()) deleted = false
-                    }
-                }
+        val files = dir.listFiles()
+        for (file in files) {
+            if (file.isDirectory) {
+                if (!deleteFolderContents(file)) deleted = false
+            } else {
+                if (!file.delete()) deleted = false
             }
         }
         return deleted
