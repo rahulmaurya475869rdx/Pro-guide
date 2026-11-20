@@ -3,7 +3,6 @@ package com.example.proguide
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 
 data class RoutePoint(val lat: Double, val lng: Double, val color: String)
 
@@ -27,13 +26,14 @@ object RouteFileManager {
         currentPoints.add(RoutePoint(lat, lng, color))
     }
 
-    fun saveCurrentRoute(context: Context, useSdCard: Boolean, name: String, description: String) {
+    fun saveCurrentRoute(context: Context, name: String, description: String) {
         if (currentPoints.isEmpty()) return
 
-        val dir = StorageHelper.getRoutesDir(context, useSdCard)
+        val dir = StorageHelper.getRoutesDir(context) ?: return
         val timestamp = System.currentTimeMillis()
         val fileName = "route_$timestamp.json"
-        val file = File(dir, fileName)
+        
+        val file = dir.createFile("application/json", fileName) ?: return
 
         try {
             val jsonObject = JSONObject()
@@ -51,22 +51,24 @@ object RouteFileManager {
             }
             jsonObject.put("points", pointsArray)
 
-            file.writeText(jsonObject.toString())
+            context.contentResolver.openOutputStream(file.uri)?.use { outputStream ->
+                outputStream.write(jsonObject.toString().toByteArray())
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         currentPoints.clear()
     }
 
-    fun getAllSavedRoutes(context: Context, useSdCard: Boolean): List<SavedRoute> {
-        val dir = StorageHelper.getRoutesDir(context, useSdCard)
+    fun getAllSavedRoutes(context: Context): List<SavedRoute> {
+        val dir = StorageHelper.getRoutesDir(context) ?: return emptyList()
         val routes = mutableListOf<SavedRoute>()
         
-        val files = dir.listFiles { file -> file.extension == "json" }
-        if (files != null) {
-            for (file in files) {
-                try {
-                    val text = file.readText()
+        val files = dir.listFiles().filter { it.name?.endsWith(".json") == true }
+        for (file in files) {
+            try {
+                val text = context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
+                if (text != null) {
                     val json = JSONObject(text)
                     val name = json.optString("name", "Unnamed Route")
                     val desc = json.optString("description", "")
@@ -79,19 +81,18 @@ object RouteFileManager {
                         points.add(RoutePoint(pObj.getDouble("lat"), pObj.getDouble("lng"), pObj.getString("color")))
                     }
                     
-                    routes.add(SavedRoute(file.name, name, desc, time, points))
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                    routes.add(SavedRoute(file.name ?: "", name, desc, time, points))
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
-        // Latest routes sabse upar dikhein
         return routes.sortedByDescending { it.timestamp }
     }
 
-    fun deleteRoute(context: Context, useSdCard: Boolean, fileName: String) {
-        val dir = StorageHelper.getRoutesDir(context, useSdCard)
-        val file = File(dir, fileName)
-        if (file.exists()) file.delete()
+    fun deleteRoute(context: Context, fileName: String) {
+        val dir = StorageHelper.getRoutesDir(context) ?: return
+        val file = dir.findFile(fileName)
+        file?.delete()
     }
 }
