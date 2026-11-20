@@ -16,7 +16,6 @@
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
 
-    <!-- COMPASS SWITCH -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -38,7 +37,6 @@
             android:layout_height="wrap_content"/>
     </LinearLayout>
 
-    <!-- NAYA: GLOWING ARROWS SWITCH -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -63,29 +61,21 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Storage Location:"
+        android:text="Storage Location (SAF):"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
         android:layout_marginBottom="8dp"/>
-
-    <RadioGroup
+        
+    <TextView
+        android:id="@+id/tvFolderPath"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
-        <RadioButton
-            android:id="@+id/radioInternal"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Phone"
-            android:textColor="#FFFFFF"
-            android:layout_marginEnd="16dp"/>
-        <RadioButton
-            android:id="@+id/radioSdCard"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="SD Card"
-            android:textColor="#FFFFFF"/>
-    </RadioGroup>
+        android:text="Folder not selected"
+        android:textColor="#4CAF50"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:ellipsize="middle"
+        android:layout_marginBottom="8dp"/>
 
     <TextView
         android:id="@+id/tvStorageInfo"
@@ -94,8 +84,32 @@
         android:text="Routes: 0 MB | Maps: 0 MB"
         android:textColor="#AAAAAA"
         android:textSize="14sp"
-        android:layout_marginTop="8dp"
         android:layout_marginBottom="16dp"/>
+
+    <LinearLayout
+        android:id="@+id/btnChangeFolder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="#333333"
+        android:layout_marginBottom="12dp">
+        
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_menu_save"
+            app:tint="#FFC107"/>
+            
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Change Storage Folder"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:layout_marginStart="12dp"/>
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/btnDownloadMap"
