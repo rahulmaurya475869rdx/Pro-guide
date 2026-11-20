@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -20,13 +19,11 @@ class SavedRoutesActivity : AppCompatActivity() {
 
     private lateinit var rvSavedRoutes: RecyclerView
     private lateinit var tvNoRoutes: TextView
-    private var useSdCard = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_saved_routes)
 
-        useSdCard = intent.getBooleanExtra("use_sd_card", false)
         rvSavedRoutes = findViewById(R.id.rvSavedRoutes)
         tvNoRoutes = findViewById(R.id.tvNoRoutes)
 
@@ -35,7 +32,7 @@ class SavedRoutesActivity : AppCompatActivity() {
     }
 
     private fun loadRoutes() {
-        val routes = RouteFileManager.getAllSavedRoutes(this, useSdCard)
+        val routes = RouteFileManager.getAllSavedRoutes(this)
         if (routes.isEmpty()) {
             tvNoRoutes.visibility = View.VISIBLE
             rvSavedRoutes.visibility = View.GONE
@@ -70,7 +67,6 @@ class SavedRoutesActivity : AppCompatActivity() {
             holder.tvDate.text = sdf.format(Date(route.timestamp))
 
             holder.btnLoad.setOnClickListener {
-                // Wapas MainActivity me data bhejo
                 val resultIntent = Intent()
                 resultIntent.putExtra("load_route_file", route.fileName)
                 setResult(RESULT_OK, resultIntent)
@@ -82,8 +78,8 @@ class SavedRoutesActivity : AppCompatActivity() {
                     .setTitle("Delete Route")
                     .setMessage("Kya aap sach me '${route.name}' ko delete karna chahte hain?")
                     .setPositiveButton("Yes") { _, _ ->
-                        RouteFileManager.deleteRoute(this@SavedRoutesActivity, useSdCard, route.fileName)
-                        loadRoutes() // Refresh list
+                        RouteFileManager.deleteRoute(this@SavedRoutesActivity, route.fileName)
+                        loadRoutes() 
                     }
                     .setNegativeButton("No", null)
                     .show()
