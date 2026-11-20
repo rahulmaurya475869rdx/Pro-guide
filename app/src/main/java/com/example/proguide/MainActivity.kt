@@ -23,7 +23,9 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
@@ -31,7 +33,6 @@ import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.RadioButton
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -90,11 +91,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private lateinit var prefs: SharedPreferences
     private var isCompassModeEnabled = false
     private var isArrowsEnabled = true
-    private var useSdCard = false
+    
+    // SAF Folder setup
+    private val REQUEST_CODE_SAF = 42
+    private val REQUEST_CODE_ROUTES = 100
 
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
-    @Volatile private var smoothedBearing: Float = 0f // Compass Heading
+    @Volatile private var smoothedBearing: Float = 0f
+
+    // Camera override flags (My Location fix)
+    private var isUserMovingMap = false
+    private val handler = Handler(Looper.getMainLooper())
 
     private var isRecording = false
     private var isReturning = false
@@ -139,10 +147,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         tts = TextToSpeech(this, this)
 
-        prefs = getSharedPreferences("ProGuidePrefs", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences(StorageHelper.PREFS_NAME, Context.MODE_PRIVATE)
         isCompassModeEnabled = prefs.getBoolean("compass_mode", false)
         isArrowsEnabled = prefs.getBoolean("show_arrows", true)
-        useSdCard = prefs.getBoolean("use_sd_card", false)
 
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
@@ -177,8 +184,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             startPulseAnimations() 
         }
 
+        // MY LOCATION FIX
         findViewById<FloatingActionButton>(R.id.btnMyLocation).setOnClickListener {
+            isUserMovingMap = true // Sensor ko temporarily pause karo
             mapLibreMap?.let { LocationHelper.moveToCurrentLocation(this@MainActivity, it) }
+            handler.postDelayed({ isUserMovingMap = false }, 2500) // 2.5 sec baad sensor wapas on
         }
 
         btnVoice.setOnClickListener {
@@ -229,6 +239,56 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         btnReturn.setOnClickListener {
             if (isReturning) stopReturning() else startReturning()
         }
+
+        // Agar folder select nahi kiya hai, toh pehli baar me maango
+        if (StorageHelper.getFolderUri(this) == null) {
+            showFolderSelectionDialog()
+        }
+    }
+
+    private fun showFolderSelectionDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Select Storage Folder")
+            .setMessage("Apni routes aur maps save karne ke liye ek folder select karein. (Isko uninstall karne par bhi data safe rahega)")
+            .setCancelable(false)
+            .setPositiveButton("Select Folder") { _, _ ->
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                startActivityForResult(intent, REQUEST_CODE_SAF)
+            }
+            .show()
+    }
+
+    // SAF Result Handler
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_CODE_SAF && resultCode == RESULT_OK) {
+            data?.data?.let { uri ->
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                StorageHelper.saveFolderUri(this, uri)
+                Toast.makeText(this, "Folder Selected Successfully!", Toast.LENGTH_SHORT).show()
+            }
+        } else if (requestCode == REQUEST_CODE_ROUTES && resultCode == RESULT_OK) {
+            val fileName = data?.getStringExtra("load_route_file")
+            if (fileName != null) {
+                val routes = RouteFileManager.getAllSavedRoutes(this)
+                val selectedRoute = routes.find { it.fileName == fileName }
+                
+                if (selectedRoute != null) {
+                    recordedPoints.clear()
+                    for (p in selectedRoute.points) {
+                        recordedPoints.add(LatLng(p.lat, p.lng))
+                    }
+                    updateAllMapLines()
+                    Toast.makeText(this, "Route Loaded: ${selectedRoute.name}", Toast.LENGTH_SHORT).show()
+                    startNavigation(true)
+                }
+            }
+        }
     }
 
     override fun onInit(status: Int) {
@@ -256,7 +316,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             var azimuth: Float = Math.toDegrees(orientation[0].toDouble()).toFloat()
             if (azimuth < 0f) azimuth += 360f
             
-            // Low-pass filter for smooth compass
             var delta: Float = azimuth - smoothedBearing
             if (delta > 180f) delta -= 360f
             if (delta < -180f) delta += 360f
@@ -264,15 +323,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (smoothedBearing < 0f) smoothedBearing += 360f
             if (smoothedBearing >= 360f) smoothedBearing -= 360f
             
-            // Update Map Rotation if user enabled it
-            if (isCompassModeEnabled) {
+            // Update Map Rotation if user enabled it AND map not currently moving via button
+            if (isCompassModeEnabled && !isUserMovingMap) {
                 mapLibreMap?.let { map ->
                     val pos = CameraPosition.Builder(map.cameraPosition).bearing(smoothedBearing.toDouble()).build()
                     map.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 250)
                 }
             }
 
-            // If navigating, we need to update arrow continuously based on compass
             if (isReturning && isArrowsEnabled) {
                 updateHudCompassDirection()
             }
@@ -282,7 +340,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private fun updateHudCompassDirection() {
         if (!isReturning || currentRoutePointsForNav.isEmpty() || !isArrowsEnabled) return
         
-        // Find closest point to get current target
         val userLoc = LatLng(kalmanFilter.getLat(), kalmanFilter.getLng())
         var closestIndex = -1
         var minDistance = Float.MAX_VALUE
@@ -302,7 +359,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         val bearingToPoint = calculateBearing(userLoc, targetPoint)
         
-        // Compass Relative Angle
         var relativeAngle = bearingToPoint - smoothedBearing
         if (relativeAngle > 180f) relativeAngle -= 360f
         if (relativeAngle < -180f) relativeAngle += 360f
@@ -349,7 +405,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         if (style.getLayer(CONNECTING_LAYER) != null) style.removeLayer(CONNECTING_LAYER)
         if (style.getSource(CONNECTING_SOURCE) != null) style.removeSource(CONNECTING_SOURCE)
 
-        // FIX: Added <Point> to emptyList()
         val emptyLine = LineString.fromLngLats(emptyList<Point>())
         style.addSource(GeoJsonSource(ROUTE_PURPLE_SOURCE, Feature.fromGeometry(emptyLine)))
         style.addSource(GeoJsonSource(CONNECTING_SOURCE, Feature.fromGeometry(emptyLine)))
@@ -386,7 +441,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 PropertyFactory.iconAllowOverlap(true),
                 PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.symbolSpacing(30f),
-                PropertyFactory.iconRotationAlignment("map") // Line ke along face karega
+                PropertyFactory.iconRotationAlignment("map")
             )
             style.addLayer(arrowLayer)
             startArrowGlowAnimation(style)
@@ -450,7 +505,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             
             builder.setPositiveButton("Save") { _, _ ->
                 val name = if (etName.text.toString().isBlank()) "Unnamed Route" else etName.text.toString()
-                RouteFileManager.saveCurrentRoute(this@MainActivity, useSdCard, name, etDesc.text.toString())
+                RouteFileManager.saveCurrentRoute(this@MainActivity, name, etDesc.text.toString())
                 Toast.makeText(this@MainActivity, "Route Saved!", Toast.LENGTH_SHORT).show()
             }
             builder.setNegativeButton("Discard") { _, _ -> }
@@ -629,7 +684,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         if (closestIndex == -1) return
 
-        // 1. OFF-ROUTE LOGIC
         if (minDistance > 50f) {
             val closestPoint = currentRoutePointsForNav[closestIndex]
             
@@ -646,14 +700,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 Toast.makeText(this, "Aap route se door hain! Wapas raste par aayein.", Toast.LENGTH_LONG).show()
                 isOffRouteAlerted = true
             }
-            
             return 
         } else {
             isOffRouteAlerted = false
             currentStyle?.getSourceAs<GeoJsonSource>(CONNECTING_SOURCE)?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(emptyList<Point>())))
         }
 
-        // 2. TURN ANNOUNCEMENTS (Voice Only)
         if (closestIndex >= currentRoutePointsForNav.size - 2) return
 
         var nextTurnIndex = closestIndex
@@ -759,27 +811,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 100 && resultCode == RESULT_OK) {
-            val fileName = data?.getStringExtra("load_route_file")
-            if (fileName != null) {
-                val routes = RouteFileManager.getAllSavedRoutes(this, useSdCard)
-                val selectedRoute = routes.find { it.fileName == fileName }
-                
-                if (selectedRoute != null) {
-                    recordedPoints.clear()
-                    for (p in selectedRoute.points) {
-                        recordedPoints.add(LatLng(p.lat, p.lng))
-                    }
-                    updateAllMapLines()
-                    Toast.makeText(this, "Route Loaded: ${selectedRoute.name}", Toast.LENGTH_SHORT).show()
-                    startNavigation(true)
-                }
-            }
-        }
-    }
-
     override fun onResume() {
         super.onResume(); mapView.onResume()
         rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
@@ -792,6 +823,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     
     override fun onDestroy() {
         arrowAnimator?.cancel()
+        handler.removeCallbacksAndMessages(null)
         if (this::tts.isInitialized) { tts.stop(); tts.shutdown() }
         super.onDestroy(); mapView.onDestroy()
     }
@@ -812,12 +844,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         val switchCompass = view.findViewById<Switch>(R.id.switchCompass)
         val switchArrows = view.findViewById<Switch>(R.id.switchArrows)
-        val radioInternal = view.findViewById<RadioButton>(R.id.radioInternal)
-        val radioSdCard = view.findViewById<RadioButton>(R.id.radioSdCard)
+        val tvFolderPath = view.findViewById<TextView>(R.id.tvFolderPath)
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
         val btnDeleteData = view.findViewById<LinearLayout>(R.id.btnDeleteData)
         val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes)
+        val btnChangeFolder = view.findViewById<LinearLayout>(R.id.btnChangeFolder)
 
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
@@ -825,7 +857,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             prefs.edit().putBoolean("compass_mode", isChecked).apply()
             if (isChecked) {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.NONE
-                rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
                 Toast.makeText(this@MainActivity, "Compass Mode ON", Toast.LENGTH_SHORT).show()
             } else {
                 mapLibreMap?.locationComponent?.cameraMode = CameraMode.TRACKING
@@ -838,32 +869,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         switchArrows.setOnCheckedChangeListener { _, isChecked ->
             isArrowsEnabled = isChecked
             prefs.edit().putBoolean("show_arrows", isChecked).apply()
-            if (!isChecked) {
-                navArrowView.visibility = View.GONE
-            }
+            if (!isChecked) navArrowView.visibility = View.GONE
         }
 
-        if (useSdCard) radioSdCard.isChecked = true else radioInternal.isChecked = true
-        
-        radioInternal.setOnClickListener { useSdCard = false; prefs.edit().putBoolean("use_sd_card", false).apply() }
-        radioSdCard.setOnClickListener { useSdCard = true; prefs.edit().putBoolean("use_sd_card", true).apply() }
+        val uri = StorageHelper.getFolderUri(this)
+        tvFolderPath.text = uri?.lastPathSegment ?: "Folder not selected"
 
-        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
-        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+        val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this))
+        val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this))
         tvStorageInfo.text = "Routes: $rSize | Maps: $mSize"
+
+        btnChangeFolder.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            startActivityForResult(intent, REQUEST_CODE_SAF)
+            dialog.dismiss()
+        }
 
         btnDownload.setOnClickListener {
             mapLibreMap?.let { map ->
                 val styleToDownload = if (isSatelliteMode) MapConfig.SATELLITE_STYLE else MapConfig.DEFAULT_STYLE
-                OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload, useSdCard)
+                // Note: MapLibre internally stores map tiles in App Specific folder. SAF cannot be used for Map tiles currently.
+                OfflineMapManager.downloadCurrentArea(this@MainActivity, map, styleToDownload, false)
                 dialog.dismiss()
             }
         }
 
         btnViewRoutes.setOnClickListener {
             val intent = Intent(this@MainActivity, SavedRoutesActivity::class.java)
-            intent.putExtra("use_sd_card", useSdCard)
-            startActivityForResult(intent, 100)
+            startActivityForResult(intent, REQUEST_CODE_ROUTES)
             dialog.dismiss()
         }
 
@@ -872,11 +906,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             builder.setTitle("Delete Data?")
             builder.setMessage("Kya aap sach me saare Routes aur Maps delete karna chahte hain?")
             builder.setPositiveButton("Yes, Delete") { _, _ ->
-                StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
-                StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity))
+                StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity))
                 Toast.makeText(this@MainActivity, "Storage Cleared Successfully!", Toast.LENGTH_SHORT).show()
-                val newRSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity, useSdCard))
-                val newMSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity, useSdCard))
+                val newRSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this@MainActivity))
+                val newMSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this@MainActivity))
                 tvStorageInfo.text = "Routes: $newRSize | Maps: $newMSize"
             }
             builder.setNegativeButton("Cancel", null)
