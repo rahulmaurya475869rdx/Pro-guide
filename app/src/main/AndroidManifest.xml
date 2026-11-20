@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -28,6 +29,12 @@
         <!-- Saved Routes Activity -->
         <activity
             android:name=".SavedRoutesActivity"
+            android:exported="false" />
+
+        <!-- BACKGROUND TRACKING SERVICE -->
+        <service
+            android:name=".LocationTrackingService"
+            android:foregroundServiceType="location"
             android:exported="false" />
 
     </application>
