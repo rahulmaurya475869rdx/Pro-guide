@@ -24,11 +24,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -60,9 +60,10 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import java.util.Locale
 import kotlin.math.abs
 
-class MainActivity : AppCompatActivity(), SensorEventListener {
+class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnInitListener {
 
     private lateinit var mapView: MapView
     private var mapLibreMap: MapLibreMap? = null
@@ -105,6 +106,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private val recordedPoints = mutableListOf<LatLng>() 
     
     private var isVoiceEnabled = true
+    
+    private lateinit var tts: TextToSpeech
+    private var ttsReady = false
+
     private var currentTargetBearing: Float = 0f
     private var currentRoutePointsForNav = mutableListOf<LatLng>()
 
@@ -117,7 +122,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private val CONNECTING_LAYER = "connecting-layer"
     private var arrowAnimator: ValueAnimator? = null
 
-    // BROADCAST RECEIVER (Receives data from Service)
     private val locationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LocationTrackingService.BROADCAST_LOCATION) {
@@ -145,7 +149,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 if (isReturning) {
                     if (showArrows && isArrowsEnabled) {
                         navArrowView.visibility = View.VISIBLE
-                        // UI thread pe compass calculation karke arrow ghumayenge
                         updateHudArrow(userLoc)
                     } else {
                         navArrowView.visibility = View.GONE
@@ -161,6 +164,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         MapLibre.getInstance(this@MainActivity)
         setContentView(R.layout.activity_main)
 
+        tts = TextToSpeech(this, this)
+
         if (savedInstanceState != null) {
             val latArray = savedInstanceState.getDoubleArray("saved_lats")
             val lngArray = savedInstanceState.getDoubleArray("saved_lngs")
@@ -174,6 +179,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         prefs = getSharedPreferences(StorageHelper.PREFS_NAME, Context.MODE_PRIVATE)
         isCompassModeEnabled = prefs.getBoolean("compass_mode", false)
         isArrowsEnabled = prefs.getBoolean("show_arrows", true)
+        isVoiceEnabled = prefs.getBoolean("is_voice_enabled", true)
 
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
@@ -199,7 +205,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         updateStatusUI(dotGps, pulseGps, "#F44336")
         updateStatusUI(dotInternet, pulseInternet, "#F44336")
 
-        // Permission Check
+        if (isVoiceEnabled) {
+            btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+            btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
+        } else {
+            btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode)
+            btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+        }
+
         val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -221,12 +234,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         btnVoice.setOnClickListener {
             isVoiceEnabled = !isVoiceEnabled
+            prefs.edit().putBoolean("is_voice_enabled", isVoiceEnabled).apply()
+            
             if (isVoiceEnabled) {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
+                speakLocal("Voice guidance on")
             } else {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                if (::tts.isInitialized) {
+                    tts.stop()
+                }
             }
         }
 
@@ -270,6 +289,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (StorageHelper.getFolderUri(this) == null) {
             showFolderSelectionDialog()
         }
+
+        // Check for app updates on startup
+        UpdateManager.checkForUpdates(this)
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts.setLanguage(Locale.getDefault())
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.language = Locale.US
+            }
+            ttsReady = true
+        }
+    }
+
+    private fun speakLocal(text: String) {
+        if (ttsReady && isVoiceEnabled) {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        }
     }
 
     private fun updateHudArrow(userLoc: LatLng) {
@@ -282,7 +320,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun showFolderSelectionDialog() {
         AlertDialog.Builder(this)
             .setTitle("Select Storage Folder")
-            .setMessage("Apni routes aur maps save karne ke liye ek folder select karein. (Isko uninstall karne par bhi data safe rahega)")
+            .setMessage("Please select a folder to save your routes and maps. Your data will be safe even if you uninstall the app.")
             .setCancelable(false)
             .setPositiveButton("Select Folder") { _, _ ->
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
@@ -346,7 +384,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
 
-            // Compass se HUD arrow update karo
             if (isReturning && isArrowsEnabled && navArrowView.visibility == View.VISIBLE) {
                 var relativeAngle = currentTargetBearing - smoothedBearing
                 if (relativeAngle > 180f) relativeAngle -= 360f
@@ -462,7 +499,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         btnRecord.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.GONE
         navArrowView.visibility = View.GONE
-        Toast.makeText(this@MainActivity, "Recording Started (Background)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this@MainActivity, "Recording Started", Toast.LENGTH_SHORT).show()
         
         val serviceIntent = Intent(this, LocationTrackingService::class.java)
         serviceIntent.action = LocationTrackingService.ACTION_START_RECORDING
@@ -505,7 +542,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun startReturning() {
         if (recordedPoints.isEmpty()) {
-            Toast.makeText(this@MainActivity, "Pehle koi route record karein!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, "Please record a route first!", Toast.LENGTH_SHORT).show()
             return
         }
         startNavigation(false)
@@ -520,7 +557,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         
         btnReturn.setImageResource(android.R.drawable.ic_media_pause)
         btnReturn.visibility = View.VISIBLE
-        Toast.makeText(this, "Navigation ON (Background)", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Navigation ON", Toast.LENGTH_SHORT).show()
         
         updateAllMapLines()
         currentStyle?.getLayer(ARROW_LAYER)?.setProperties(PropertyFactory.visibility("visible"))
@@ -637,6 +674,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onDestroy() {
         arrowAnimator?.cancel()
         handler.removeCallbacksAndMessages(null)
+        if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
         super.onDestroy(); mapView.onDestroy()
     }
     
@@ -715,7 +753,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         btnDeleteData.setOnClickListener {
             val builder = AlertDialog.Builder(this@MainActivity)
             builder.setTitle("Delete Data?")
-            builder.setMessage("Kya aap sach me saare Routes aur Maps delete karna chahte hain?")
+            builder.setMessage("Are you sure you want to delete all Routes and Maps?")
             builder.setPositiveButton("Yes, Delete") { _, _ ->
                 StorageHelper.deleteFolderContents(StorageHelper.getRoutesDir(this@MainActivity))
                 StorageHelper.deleteFolderContents(StorageHelper.getMapsDir(this@MainActivity))
