@@ -22,7 +22,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <!-- NAYA: Speedometer -->
+    <!-- Speedometer -->
     <TextView
         android:id="@+id/tvSpeed"
         android:layout_width="wrap_content"
@@ -50,7 +50,6 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- GPS Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -84,7 +83,6 @@
             </FrameLayout>
         </LinearLayout>
 
-        <!-- Internet Row -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -117,7 +115,20 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Glowing Navigation Arrows (Top Z-Index) -->
+    <!-- NAYA: SOS BUTTON (Long Press to Activate) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/btnSos"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="16dp"
+        android:src="@android:drawable/ic_dialog_alert"
+        app:backgroundTint="#D50000"
+        app:tint="#FFFFFF"
+        app:layout_constraintBottom_toTopOf="@+id/statusPanel"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Glowing Navigation Arrows -->
     <com.example.proguide.NavigationArrowView
         android:id="@+id/navArrowView"
         android:layout_width="240dp"
@@ -133,7 +144,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintVertical_bias="0.7" /> 
 
-    <!-- NAYA: Distance TextView -->
+    <!-- Distance TextView -->
     <TextView
         android:id="@+id/tvNavDistance"
         android:layout_width="wrap_content"
