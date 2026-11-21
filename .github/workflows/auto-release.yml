@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "main" ] # Agar branch 'master' hai toh yahan master kar dena
 
+# NAYA FIX: Ye line GitHub ko Release banane ki (write) permission degi
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,13 +22,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # Gradle 8.5 ko setup karega
     - name: Setup Gradle 8.5
       uses: gradle/gradle-build-action@v2
       with:
         gradle-version: 8.5
 
-    # NAYA FIX: 'gradlew' ki jagah direct 'gradle' command use karenge
     - name: Build Debug APK
       run: gradle assembleDebug
 
