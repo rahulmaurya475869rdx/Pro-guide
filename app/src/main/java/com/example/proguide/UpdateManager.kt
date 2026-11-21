@@ -19,8 +19,8 @@ import java.net.URL
 
 object UpdateManager {
 
-    // REPLACE THIS WITH YOUR ACTUAL GITHUB RAW LINK
-    private const val VERSION_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/version.json"
+    // TUJHE TERA ASLI LINK YAHAN MIL GAYA HAI
+    private const val VERSION_URL = "https://raw.githubusercontent.com/rahulmaurya475869rdx/Pro-guide/main/version.json"
 
     fun checkForUpdates(activity: Activity, isManual: Boolean = false) {
         if (isManual) {
