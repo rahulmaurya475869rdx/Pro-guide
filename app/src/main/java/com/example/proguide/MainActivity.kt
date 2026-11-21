@@ -173,7 +173,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    // UI Location Callback (Updates GPS Status and Speedometer)
+    // UI Location Callback
     private val uiLocationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             for (location in locationResult.locations) {
@@ -186,7 +186,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                     else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#F44336") }
                 }
 
-                // FIX: Speedometer update every time location changes
                 if (location.hasSpeed()) {
                     val currentSpeedKmh = location.speed * 3.6f
                     tvSpeed.text = "${currentSpeedKmh.toInt()} km/h"
@@ -345,6 +344,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             showFolderSelectionDialog()
         }
 
+        // Check for app updates automatically on startup
         UpdateManager.checkForUpdates(this, isManual = false)
     }
 
