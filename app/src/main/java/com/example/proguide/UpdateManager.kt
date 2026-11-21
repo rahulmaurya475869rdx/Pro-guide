@@ -22,7 +22,11 @@ object UpdateManager {
     // REPLACE THIS WITH YOUR ACTUAL GITHUB RAW LINK
     private const val VERSION_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/version.json"
 
-    fun checkForUpdates(activity: Activity) {
+    fun checkForUpdates(activity: Activity, isManual: Boolean = false) {
+        if (isManual) {
+            Toast.makeText(activity, "Checking for updates...", Toast.LENGTH_SHORT).show()
+        }
+
         Thread {
             try {
                 val url = URL(VERSION_URL)
@@ -39,17 +43,32 @@ object UpdateManager {
                     val newVersionName = json.getString("versionName")
                     val apkUrl = json.getString("apkUrl")
                     val updateMsg = json.optString("updateMessage", "A new version is available!")
+                    val whatsNew = json.optString("whatsNew", "Performance improvements and bug fixes.")
 
                     val currentVersionCode = getAppVersionCode(activity)
 
                     if (newVersionCode > currentVersionCode) {
                         activity.runOnUiThread {
-                            showUpdateDialog(activity, newVersionName, apkUrl, updateMsg)
+                            showUpdateDialog(activity, newVersionName, apkUrl, updateMsg, whatsNew)
+                        }
+                    } else {
+                        if (isManual) {
+                            activity.runOnUiThread {
+                                AlertDialog.Builder(activity)
+                                    .setTitle("No Updates")
+                                    .setMessage("You are already using the latest version of ProGuide.")
+                                    .setPositiveButton("OK", null)
+                                    .show()
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
-                // Silently ignore errors to prevent app crash if offline
+                if (isManual) {
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "Failed to check for updates. Check your internet.", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 e.printStackTrace()
             }
         }.start()
@@ -68,10 +87,10 @@ object UpdateManager {
         }
     }
 
-    private fun showUpdateDialog(activity: Activity, versionName: String, apkUrl: String, message: String) {
+    private fun showUpdateDialog(activity: Activity, versionName: String, apkUrl: String, message: String, whatsNew: String) {
         AlertDialog.Builder(activity)
             .setTitle("Update Available (v$versionName)")
-            .setMessage(message)
+            .setMessage("$message\n\nWhat's New:\n$whatsNew")
             .setCancelable(false)
             .setPositiveButton("Update Now") { _, _ ->
                 downloadAndInstallApk(activity, apkUrl)
