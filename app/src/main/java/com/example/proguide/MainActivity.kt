@@ -20,6 +20,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -41,7 +42,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -122,6 +127,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private val CONNECTING_LAYER = "connecting-layer"
     private var arrowAnimator: ValueAnimator? = null
 
+    // Background Service Receiver (for Recording / Navigation)
     private val locationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LocationTrackingService.BROADCAST_LOCATION) {
@@ -132,12 +138,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 val isRec = intent.getBooleanExtra(LocationTrackingService.EXTRA_IS_RECORDING, false)
 
                 val userLoc = LatLng(lat, lng)
-
-                if (isFirstLocationFix && mapLibreMap != null) {
-                    val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
-                    mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
-                    isFirstLocationFix = false
-                }
 
                 if (isRec) {
                     if (recordedPoints.isEmpty() || calculateDistance(recordedPoints.last().latitude, recordedPoints.last().longitude, lat, lng) > 5f) {
@@ -152,6 +152,31 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                         updateHudArrow(userLoc)
                     } else {
                         navArrowView.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    // UI Location Callback (FIX: GPS Searching issue)
+    private val uiLocationCallback = object : LocationCallback() {
+        override fun onLocationResult(locationResult: LocationResult) {
+            for (location in locationResult.locations) {
+                val accuracy: Float = location.accuracy
+                
+                when {
+                    accuracy < 10f -> { tvGpsStatus.text = "Exact (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#4CAF50") }
+                    accuracy < 20f -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#2196F3") }
+                    accuracy < 50f -> { tvGpsStatus.text = "Average (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#FFC107") }
+                    else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#F44336") }
+                }
+
+                if (accuracy <= 30f) {
+                    val userLoc = LatLng(location.latitude, location.longitude)
+                    if (isFirstLocationFix && mapLibreMap != null) {
+                        val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
+                        mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
+                        isFirstLocationFix = false
                     }
                 }
             }
@@ -222,6 +247,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1)
         } else {
             setupMap()
+            startUiLocationUpdates()
             monitorInternetConnection()
             startPulseAnimations() 
         }
@@ -290,8 +316,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             showFolderSelectionDialog()
         }
 
-        // Check for app updates on startup
-        UpdateManager.checkForUpdates(this)
+        // Check for app updates automatically on startup
+        UpdateManager.checkForUpdates(this, isManual = false)
+    }
+
+    private fun startUiLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateIntervalMillis(1000L)
+            .build()
+        fusedLocationClient.requestLocationUpdates(locationRequest, uiLocationCallback, Looper.getMainLooper())
     }
 
     override fun onInit(status: Int) {
@@ -621,8 +655,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     }
 
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val startLoc = android.location.Location("start").apply { latitude = lat1; longitude = lon1 }
-        val endLoc = android.location.Location("end").apply { latitude = lat2; longitude = lon2 }
+        val startLoc = Location("start").apply { latitude = lat1; longitude = lon1 }
+        val endLoc = Location("end").apply { latitude = lat2; longitude = lon2 }
         return startLoc.distanceTo(endLoc)
     }
 
@@ -648,7 +682,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 1) {
-            setupMap(); monitorInternetConnection(); startPulseAnimations()
+            setupMap()
+            startUiLocationUpdates()
+            monitorInternetConnection()
+            startPulseAnimations()
         }
     }
 
@@ -694,12 +731,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
         val switchCompass = view.findViewById<Switch>(R.id.switchCompass)
         val switchArrows = view.findViewById<Switch>(R.id.switchArrows)
+        val tvAppVersion = view.findViewById<TextView>(R.id.tvAppVersion)
         val tvFolderPath = view.findViewById<TextView>(R.id.tvFolderPath)
         val tvStorageInfo = view.findViewById<TextView>(R.id.tvStorageInfo)
+        val btnCheckUpdate = view.findViewById<LinearLayout>(R.id.btnCheckUpdate)
         val btnDownload = view.findViewById<LinearLayout>(R.id.btnDownloadMap)
         val btnDeleteData = view.findViewById<LinearLayout>(R.id.btnDeleteData)
         val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes)
         val btnChangeFolder = view.findViewById<LinearLayout>(R.id.btnChangeFolder)
+
+        // Set App Version
+        try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            tvAppVersion.text = "Version ${pInfo.versionName}"
+        } catch (e: Exception) {
+            tvAppVersion.text = "Version 1.0"
+        }
 
         switchCompass.isChecked = isCompassModeEnabled
         switchCompass.setOnCheckedChangeListener { _, isChecked ->
@@ -728,6 +775,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         val rSize = StorageHelper.getFolderSizeInMB(StorageHelper.getRoutesDir(this))
         val mSize = StorageHelper.getFolderSizeInMB(StorageHelper.getMapsDir(this))
         tvStorageInfo.text = "Routes: $rSize | Maps: $mSize"
+
+        btnCheckUpdate.setOnClickListener {
+            UpdateManager.checkForUpdates(this, isManual = true)
+        }
 
         btnChangeFolder.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
