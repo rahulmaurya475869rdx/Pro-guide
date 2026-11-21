@@ -1,188 +1,228 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="#1E1E1E"
-    android:padding="20dp">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ProGuide Settings"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"/>
+    android:background="#1E1E1E">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingBottom="16dp">
-        
+        android:orientation="vertical"
+        android:padding="20dp">
+
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Rotate Map with Device"
+            android:text="ProGuide Settings"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"/>
-
-        <Switch
-            android:id="@+id/switchCompass"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingBottom="16dp">
-        
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Show Glowing Arrows (HUD)"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"/>
-
-        <Switch
-            android:id="@+id/switchArrows"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
-    </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Storage Location (SAF):"
-        android:textColor="#FFFFFF"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp"/>
-        
-    <TextView
-        android:id="@+id/tvFolderPath"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Folder not selected"
-        android:textColor="#4CAF50"
-        android:textSize="14sp"
-        android:maxLines="2"
-        android:ellipsize="middle"
-        android:layout_marginBottom="8dp"/>
-
-    <TextView
-        android:id="@+id/tvStorageInfo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Routes: 0 MB | Maps: 0 MB"
-        android:textColor="#AAAAAA"
-        android:textSize="14sp"
-        android:layout_marginBottom="16dp"/>
-
-    <LinearLayout
-        android:id="@+id/btnChangeFolder"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="12dp"
-        android:background="#333333"
-        android:layout_marginBottom="12dp">
-        
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@android:drawable/ic_menu_save"
-            app:tint="#FFC107"/>
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"/>
             
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvAppVersion"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Change Storage Folder"
+            android:text="Version 1.0"
+            android:textColor="#4CAF50"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="16dp">
+            
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Rotate Map with Device"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"/>
+
+            <Switch
+                android:id="@+id/switchCompass"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="16dp">
+            
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Show Glowing Arrows (HUD)"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"/>
+
+            <Switch
+                android:id="@+id/switchArrows"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Storage Location (SAF):"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
-            android:layout_marginStart="12dp"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/btnDownloadMap"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="12dp"
-        android:background="#333333">
-        
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@android:drawable/stat_sys_download"
-            app:tint="#4CAF50"/>
+            android:layout_marginBottom="8dp"/>
             
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvFolderPath"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Download Offline Map (Current Area)"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginStart="12dp"/>
-    </LinearLayout>
+            android:text="Folder not selected"
+            android:textColor="#4CAF50"
+            android:textSize="14sp"
+            android:maxLines="2"
+            android:ellipsize="middle"
+            android:layout_marginBottom="8dp"/>
 
-    <LinearLayout
-        android:id="@+id/btnViewRoutes"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="12dp"
-        android:layout_marginTop="12dp"
-        android:background="#333333">
-        
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@android:drawable/ic_menu_directions"
-            app:tint="#2196F3"/>
-            
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvStorageInfo"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="View Saved Routes"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginStart="12dp"/>
-    </LinearLayout>
+            android:text="Routes: 0 MB | Maps: 0 MB"
+            android:textColor="#AAAAAA"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp"/>
 
-    <LinearLayout
-        android:id="@+id/btnDeleteData"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="12dp"
-        android:layout_marginTop="12dp"
-        android:background="#4D0000">
-        
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@android:drawable/ic_menu_delete"
-            app:tint="#FF5252"/>
+        <!-- CHECK FOR UPDATES BUTTON -->
+        <LinearLayout
+            android:id="@+id/btnCheckUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:background="#333333"
+            android:layout_marginBottom="12dp">
             
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Delete All Routes &amp; Maps"
-            android:textColor="#FF5252"
-            android:textSize="16sp"
-            android:layout_marginStart="12dp"/>
-    </LinearLayout>
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/stat_sys_download_done"
+                app:tint="#00E676"/>
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Check for Updates"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginStart="12dp"/>
+        </LinearLayout>
 
-</LinearLayout>
+        <LinearLayout
+            android:id="@+id/btnChangeFolder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:background="#333333"
+            android:layout_marginBottom="12dp">
+            
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_save"
+                app:tint="#FFC107"/>
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Change Storage Folder"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginStart="12dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnDownloadMap"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:background="#333333">
+            
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/stat_sys_download"
+                app:tint="#4CAF50"/>
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Download Offline Map (Current Area)"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginStart="12dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnViewRoutes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:layout_marginTop="12dp"
+            android:background="#333333">
+            
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_directions"
+                app:tint="#2196F3"/>
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="View Saved Routes"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginStart="12dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnDeleteData"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:layout_marginTop="12dp"
+            android:background="#4D0000">
+            
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="#FF5252"/>
+                
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Delete All Routes &amp; Maps"
+                android:textColor="#FF5252"
+                android:textSize="16sp"
+                android:layout_marginStart="12dp"/>
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
