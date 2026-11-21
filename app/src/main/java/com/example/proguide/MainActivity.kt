@@ -84,6 +84,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
+    private lateinit var tvSpeed: TextView
+    private lateinit var tvNavDistance: TextView
     private lateinit var dotGps: View
     private lateinit var pulseGps: View
     private lateinit var dotInternet: View
@@ -127,7 +129,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private val CONNECTING_LAYER = "connecting-layer"
     private var arrowAnimator: ValueAnimator? = null
 
-    // Background Service Receiver (for Recording / Navigation)
+    // Background Service Receiver
     private val locationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LocationTrackingService.BROADCAST_LOCATION) {
@@ -136,8 +138,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 currentTargetBearing = intent.getFloatExtra(LocationTrackingService.EXTRA_TARGET_BEARING, 0f)
                 val showArrows = intent.getBooleanExtra(LocationTrackingService.EXTRA_SHOW_ARROWS, false)
                 val isRec = intent.getBooleanExtra(LocationTrackingService.EXTRA_IS_RECORDING, false)
+                val distToTurn = intent.getFloatExtra(LocationTrackingService.EXTRA_DIST_TO_TURN, 0f)
+                val speed = intent.getFloatExtra(LocationTrackingService.EXTRA_SPEED, 0f)
 
                 val userLoc = LatLng(lat, lng)
+
+                // Update Speedometer
+                tvSpeed.text = "${speed.toInt()} km/h"
+
+                if (isFirstLocationFix && mapLibreMap != null) {
+                    val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
+                    mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
+                    isFirstLocationFix = false
+                }
 
                 if (isRec) {
                     if (recordedPoints.isEmpty() || calculateDistance(recordedPoints.last().latitude, recordedPoints.last().longitude, lat, lng) > 5f) {
@@ -149,16 +162,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                 if (isReturning) {
                     if (showArrows && isArrowsEnabled) {
                         navArrowView.visibility = View.VISIBLE
+                        tvNavDistance.visibility = View.VISIBLE
+                        tvNavDistance.text = "${distToTurn.toInt()} m"
                         updateHudArrow(userLoc)
                     } else {
                         navArrowView.visibility = View.GONE
+                        tvNavDistance.visibility = View.GONE
                     }
+                } else {
+                    tvNavDistance.visibility = View.GONE
                 }
             }
         }
     }
 
-    // UI Location Callback (FIX: GPS Searching issue)
+    // UI Location Callback
     private val uiLocationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             for (location in locationResult.locations) {
@@ -209,6 +227,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         mapView = findViewById(R.id.mapView)
         tvGpsStatus = findViewById(R.id.tvGpsStatus)
         tvNetStatus = findViewById(R.id.tvNetStatus)
+        tvSpeed = findViewById(R.id.tvSpeed)
+        tvNavDistance = findViewById(R.id.tvNavDistance)
         dotGps = findViewById(R.id.dotGps)
         pulseGps = findViewById(R.id.pulseGps)
         dotInternet = findViewById(R.id.dotInternet)
@@ -258,6 +278,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             handler.postDelayed({ isUserMovingMap = false }, 2500) 
         }
 
+        // FIX: Voice Button logic
         btnVoice.setOnClickListener {
             isVoiceEnabled = !isVoiceEnabled
             prefs.edit().putBoolean("is_voice_enabled", isVoiceEnabled).apply()
@@ -265,7 +286,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (isVoiceEnabled) {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676"))
-                speakLocal("Voice guidance on")
+                if (ttsReady) {
+                    speakLocal("Voice guidance on")
+                } else {
+                    Toast.makeText(this, "Initializing voice...", Toast.LENGTH_SHORT).show()
+                }
             } else {
                 btnVoice.setImageResource(android.R.drawable.ic_lock_silent_mode)
                 btnVoice.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
@@ -316,7 +341,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             showFolderSelectionDialog()
         }
 
-        // Check for app updates automatically on startup
         UpdateManager.checkForUpdates(this, isManual = false)
     }
 
@@ -334,13 +358,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.language = Locale.US
             }
+            tts.setSpeechRate(0.85f) // SLOWER SPEECH
             ttsReady = true
         }
     }
 
     private fun speakLocal(text: String) {
         if (ttsReady && isVoiceEnabled) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utt_id")
         }
     }
 
@@ -605,6 +630,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private fun stopReturning() {
         isReturning = false
         navArrowView.visibility = View.GONE
+        tvNavDistance.visibility = View.GONE
         btnReturn.setImageResource(android.R.drawable.ic_menu_revert)
         Toast.makeText(this@MainActivity, "Navigation OFF", Toast.LENGTH_SHORT).show()
         
@@ -740,7 +766,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         val btnViewRoutes = view.findViewById<LinearLayout>(R.id.btnViewRoutes)
         val btnChangeFolder = view.findViewById<LinearLayout>(R.id.btnChangeFolder)
 
-        // Set App Version
         try {
             val pInfo = packageManager.getPackageInfo(packageName, 0)
             tvAppVersion.text = "Version ${pInfo.versionName}"
@@ -766,7 +791,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         switchArrows.setOnCheckedChangeListener { _, isChecked ->
             isArrowsEnabled = isChecked
             prefs.edit().putBoolean("show_arrows", isChecked).apply()
-            if (!isChecked) navArrowView.visibility = View.GONE
+            if (!isChecked) {
+                navArrowView.visibility = View.GONE
+                tvNavDistance.visibility = View.GONE
+            }
         }
 
         val uri = StorageHelper.getFolderUri(this)
