@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- APK Install Permission for In-App Updates -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -31,11 +34,22 @@
             android:name=".SavedRoutesActivity"
             android:exported="false" />
 
-        <!-- BACKGROUND TRACKING SERVICE -->
+        <!-- Background Tracking Service -->
         <service
             android:name=".LocationTrackingService"
             android:foregroundServiceType="location"
             android:exported="false" />
+
+        <!-- File Provider for APK Installation -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 
