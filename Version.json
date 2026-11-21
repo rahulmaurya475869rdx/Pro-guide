@@ -1,0 +1,7 @@
+{
+  "versionCode": 3,
+  "versionName": "1.2",
+  "apkUrl": "https://github.com/your-username/Pro-guide/releases/download/v1.2/app-debug.apk",
+  "updateMessage": "A new version of ProGuide is available with new features and bug fixes.",
+  "whatsNew": "- Fixed GPS searching issue.\n- Added manual update checker.\n- Background tracking improved.\n- Storage bug fixed."
+}
