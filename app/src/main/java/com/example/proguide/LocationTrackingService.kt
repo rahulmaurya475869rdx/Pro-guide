@@ -23,7 +23,6 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
-    private var isVoiceEnabled = true
 
     private var isRecording = false
     private var isReturning = false
@@ -45,6 +44,8 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
         const val EXTRA_TARGET_BEARING = "target_bearing"
         const val EXTRA_SHOW_ARROWS = "show_arrows"
         const val EXTRA_IS_RECORDING = "is_recording"
+        const val EXTRA_DIST_TO_TURN = "dist_to_turn"
+        const val EXTRA_SPEED = "speed"
     }
 
     override fun onCreate() {
@@ -137,11 +138,18 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
 
                     var targetBearing = 0f
                     var showArrows = false
+                    var distToTurn = 0f
 
                     if (isReturning && currentRoutePointsForNav.size >= 2) {
                         val navResult = checkNavigation(userLoc)
                         targetBearing = navResult.first
                         showArrows = navResult.second
+                        distToTurn = navResult.third
+                    }
+
+                    var speedKmh = 0f
+                    if (location.hasSpeed()) {
+                        speedKmh = location.speed * 3.6f // Convert m/s to km/h
                     }
 
                     // Broadcast to MainActivity
@@ -152,13 +160,15 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
                     intent.putExtra(EXTRA_TARGET_BEARING, targetBearing)
                     intent.putExtra(EXTRA_SHOW_ARROWS, showArrows)
                     intent.putExtra(EXTRA_IS_RECORDING, isRecording)
+                    intent.putExtra(EXTRA_DIST_TO_TURN, distToTurn)
+                    intent.putExtra(EXTRA_SPEED, speedKmh)
                     sendBroadcast(intent)
                 }
             }
         }
     }
 
-    private fun checkNavigation(userLoc: LatLng): Pair<Float, Boolean> {
+    private fun checkNavigation(userLoc: LatLng): Triple<Float, Boolean, Float> {
         var closestIndex = -1
         var minDistance = Float.MAX_VALUE
         
@@ -170,7 +180,7 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
             }
         }
 
-        if (closestIndex == -1) return Pair(0f, false)
+        if (closestIndex == -1) return Triple(0f, false, 0f)
 
         // OFF-ROUTE
         if (minDistance > 50f) {
@@ -179,12 +189,12 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
                 isOffRouteAlerted = true
             }
             val targetPoint = currentRoutePointsForNav[closestIndex]
-            return Pair(calculateBearing(userLoc, targetPoint), true)
+            return Triple(calculateBearing(userLoc, targetPoint), true, minDistance)
         } else {
             isOffRouteAlerted = false
         }
 
-        if (closestIndex >= currentRoutePointsForNav.size - 2) return Pair(0f, false)
+        if (closestIndex >= currentRoutePointsForNav.size - 2) return Triple(0f, false, 0f)
 
         var nextTurnIndex = closestIndex
         var turnAngle = 0f
@@ -225,19 +235,26 @@ class LocationTrackingService : Service(), TextToSpeech.OnInitListener {
         }
 
         val targetPoint = currentRoutePointsForNav[nextTurnIndex]
-        return Pair(calculateBearing(userLoc, targetPoint), true)
+        return Triple(calculateBearing(userLoc, targetPoint), true, distToTurn)
     }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts.language = Locale.US
+            val result = tts.setLanguage(Locale.getDefault())
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.language = Locale.US
+            }
+            tts.setSpeechRate(0.85f) // Slower speed
             ttsReady = true
         }
     }
 
     private fun speak(text: String) {
-        if (isVoiceEnabled && ttsReady) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        val prefs = getSharedPreferences(StorageHelper.PREFS_NAME, Context.MODE_PRIVATE)
+        val voiceEnabled = prefs.getBoolean("is_voice_enabled", true)
+
+        if (voiceEnabled && ttsReady) {
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utt_id")
         }
     }
 
