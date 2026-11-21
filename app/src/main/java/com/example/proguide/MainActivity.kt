@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     private lateinit var btnVoice: FloatingActionButton
     private lateinit var btnSatellite: MaterialCardView
     private lateinit var tvSatelliteIcon: TextView
+    private lateinit var btnSos: FloatingActionButton
     
     private lateinit var tvGpsStatus: TextView
     private lateinit var tvNetStatus: TextView
@@ -98,6 +99,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
     
     private val REQUEST_CODE_SAF = 42
     private val REQUEST_CODE_ROUTES = 100
+    private val REQUEST_CODE_SOS_PERMISSIONS = 200
 
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
@@ -243,6 +245,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         btnVoice = findViewById(R.id.btnVoice)
         btnSatellite = findViewById(R.id.btnSatellite)
         tvSatelliteIcon = findViewById(R.id.tvSatelliteIcon)
+        btnSos = findViewById(R.id.btnSos)
         navArrowView = findViewById(R.id.navArrowView)
         
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this@MainActivity)
@@ -340,12 +343,43 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (isReturning) stopReturning() else startReturning()
         }
 
+        // NAYA: SOS Button Long Press Logic
+        btnSos.setOnLongClickListener {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                
+                Toast.makeText(this, "Please grant Bluetooth and SMS permissions first!", Toast.LENGTH_LONG).show()
+                requestSosPermissions()
+                return@setOnLongClickListener true
+            }
+
+            // Trigger SOS
+            Toast.makeText(this, "SOS ACTIVATED! Searching for nearby help...", Toast.LENGTH_LONG).show()
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                MeshSosManager.broadcastSos(this, "Rahul", loc) // Apna naam yahan change kar lena
+            }
+            true
+        }
+
         if (StorageHelper.getFolderUri(this) == null) {
             showFolderSelectionDialog()
         }
 
-        // Check for app updates automatically on startup
         UpdateManager.checkForUpdates(this, isManual = false)
+    }
+
+    private fun requestSosPermissions() {
+        val sosPerms = mutableListOf<String>()
+        sosPerms.add(Manifest.permission.SEND_SMS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            sosPerms.add(Manifest.permission.BLUETOOTH_SCAN)
+            sosPerms.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            sosPerms.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            sosPerms.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+        ActivityCompat.requestPermissions(this, sosPerms.toTypedArray(), REQUEST_CODE_SOS_PERMISSIONS)
     }
 
     private fun startUiLocationUpdates() {
@@ -362,7 +396,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts.language = Locale.US
             }
-            tts.setSpeechRate(0.85f) // SLOWER SPEECH
+            tts.setSpeechRate(0.85f)
             ttsReady = true
         }
     }
@@ -716,6 +750,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             startUiLocationUpdates()
             monitorInternetConnection()
             startPulseAnimations()
+        } else if (requestCode == REQUEST_CODE_SOS_PERMISSIONS) {
+            Toast.makeText(this, "SOS Permissions Updated", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -728,11 +764,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             registerReceiver(locationReceiver, filter)
         }
         rotationVectorSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        
+        // Start P2P Radar
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
+            MeshSosManager.startRadar(this, "Rahul") // Apna naam yahan daal
+        }
     }
 
     override fun onPause() { 
         super.onPause(); mapView.onPause(); sensorManager.unregisterListener(this) 
         unregisterReceiver(locationReceiver)
+        // MeshSosManager.stopRadar() // Optional: Stop radar in background
     }
     override fun onStart() { super.onStart(); mapView.onStart() }
     override fun onStop() { super.onStop(); mapView.onStop() }
