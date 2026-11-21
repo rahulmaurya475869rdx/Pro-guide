@@ -18,9 +18,23 @@ object MeshSosManager {
     private const val TAG = "MeshSos"
 
     private val processedMessages = HashSet<String>()
+    
+    // FIX 1: Yahan '? = null' lagaya hai taaki error na aaye
     private var connectionsClient: ConnectionsClient? = null
 
-    // Start Radar (Discovery + Advertising) - Call in onResume
+    // FIX 2: Dummy Callback banaya hai (API null accept nahi karta)
+    private val dummyLifecycleCallback = object : ConnectionLifecycleCallback() {
+        override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
+            connectionsClient?.acceptConnection(endpointId, object : PayloadCallback() {
+                override fun onPayloadReceived(endpointId: String, payload: Payload) {}
+                override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
+            })
+        }
+        override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {}
+        override fun onDisconnected(endpointId: String) {}
+    }
+
+    // Start Radar
     fun startRadar(context: Context, userName: String) {
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) return
         connectionsClient = Nearby.getConnectionsClient(context)
@@ -40,17 +54,7 @@ object MeshSosManager {
         }, discoveryOptions)
 
         // 2. Advertising (Be visible to others)
-        connectionsClient?.startAdvertising(userName, SERVICE_ID, object : ConnectionLifecycleCallback {
-            override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
-                // We don't need connection for just broadcasting, so we accept and disconnect
-                connectionsClient?.acceptConnection(endpointId, object : PayloadCallback() {
-                    override fun onPayloadReceived(endpointId: String, payload: Payload) {}
-                    override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {}
-                })
-            }
-            override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {}
-            override fun onDisconnected(endpointId: String) {}
-        }, advertisingOptions)
+        connectionsClient?.startAdvertising(userName, SERVICE_ID, dummyLifecycleCallback, advertisingOptions)
     }
 
     // Trigger SOS
@@ -64,20 +68,17 @@ object MeshSosManager {
         val lat = location?.latitude ?: 0.0
         val lon = location?.longitude ?: 0.0
         
-        // Payload Format: SOS|UniqueID|Name|Lat,Lon|Battery%
         val sosPayload = "SOS|$msgId|$userName|$lat,$lon|$battery%"
         
-        processedMessages.add(msgId) // Mark as seen to prevent loops
+        processedMessages.add(msgId)
 
         val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
         
-        // Stop old advertising and start with SOS payload in the name
         client.stopAdvertising()
-        client.startAdvertising(sosPayload, SERVICE_ID, null, options)
+        // FIX: Null ki jagah dummyLifecycleCallback pass kiya
+        client.startAdvertising(sosPayload, SERVICE_ID, dummyLifecycleCallback, options)
         
-        // Send SMS Fallback
         sendSmsFallback(context, lat, lon)
-        
         Toast.makeText(context, "SOS Broadcasted! Stay where you are.", Toast.LENGTH_LONG).show()
     }
 
@@ -90,28 +91,22 @@ object MeshSosManager {
                 val coords = parts[3].split(",")
                 val lat = coords[0].toDouble()
                 val lon = coords[1].toDouble()
-                val battery = parts[4]
 
-                // Loop Prevention
                 if (processedMessages.contains(msgId)) return
                 processedMessages.add(msgId)
 
-                // Show Alert to User
                 (context as? MainActivity)?.runOnUiThread {
                     Toast.makeText(context, "SOS DETECTED from $victimName! Nearby.", Toast.LENGTH_LONG).show()
-                    // You can add a Dialog or Alarm here later
                 }
 
-                // Relay Logic
                 if (!isInternetAvailable(context)) {
                     Log.d(TAG, "No internet. Relaying SOS: $msgId")
-                    // Re-broadcast the same payload to hop to the next phone
                     connectionsClient?.stopAdvertising()
                     val options = AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build()
-                    connectionsClient?.startAdvertising(payload, SERVICE_ID, null, options)
+                    // FIX: Null ki jagah dummyLifecycleCallback pass kiya
+                    connectionsClient?.startAdvertising(payload, SERVICE_ID, dummyLifecycleCallback, options)
                 } else {
                     Log.d(TAG, "Internet available. Uploading to Cloud...")
-                    // TODO: Upload to Firebase/Server
                 }
             }
         } catch (e: Exception) {
