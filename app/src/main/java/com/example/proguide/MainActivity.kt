@@ -143,9 +143,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
 
                 val userLoc = LatLng(lat, lng)
 
-                // Update Speedometer
-                tvSpeed.text = "${speed.toInt()} km/h"
-
                 if (isFirstLocationFix && mapLibreMap != null) {
                     val pos = CameraPosition.Builder().target(userLoc).zoom(18.0).tilt(50.0).build()
                     mapLibreMap?.animateCamera(CameraUpdateFactory.newCameraPosition(pos), 2000)
@@ -176,7 +173,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
         }
     }
 
-    // UI Location Callback
+    // UI Location Callback (Updates GPS Status and Speedometer)
     private val uiLocationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             for (location in locationResult.locations) {
@@ -187,6 +184,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
                     accuracy < 20f -> { tvGpsStatus.text = "Good (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#2196F3") }
                     accuracy < 50f -> { tvGpsStatus.text = "Average (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#FFC107") }
                     else -> { tvGpsStatus.text = "Weak (${accuracy.toInt()}m)"; updateStatusUI(dotGps, pulseGps, "#F44336") }
+                }
+
+                // FIX: Speedometer update every time location changes
+                if (location.hasSpeed()) {
+                    val currentSpeedKmh = location.speed * 3.6f
+                    tvSpeed.text = "${currentSpeedKmh.toInt()} km/h"
+                } else {
+                    tvSpeed.text = "0 km/h"
                 }
 
                 if (accuracy <= 30f) {
@@ -278,7 +283,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, TextToSpeech.OnIn
             handler.postDelayed({ isUserMovingMap = false }, 2500) 
         }
 
-        // FIX: Voice Button logic
         btnVoice.setOnClickListener {
             isVoiceEnabled = !isVoiceEnabled
             prefs.edit().putBoolean("is_voice_enabled", isVoiceEnabled).apply()
