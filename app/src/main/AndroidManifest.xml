@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
-    <!-- APK Install Permission for In-App Updates -->
+    <!-- Permission for APK Install -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
@@ -19,7 +19,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ProGuide">
 
-        <!-- Main Activity -->
+        <!-- Activities -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -29,12 +29,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Saved Routes Activity -->
         <activity
             android:name=".SavedRoutesActivity"
             android:exported="false" />
 
-        <!-- Background Tracking Service -->
+        <!-- Background Service -->
         <service
             android:name=".LocationTrackingService"
             android:foregroundServiceType="location"
