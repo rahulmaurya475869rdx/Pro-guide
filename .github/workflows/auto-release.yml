@@ -2,7 +2,7 @@ name: Auto Build & Release
 
 on:
   push:
-    branches: [ "main" ] # Agar tera branch 'master' hai toh yahan master likh dena
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -19,13 +19,11 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # NAYA STEP: Ye Gradle ko install karega
-    - name: Setup Gradle
+    # Gradle 8.5 fix karega
+    - name: Setup Gradle 8.5
       uses: gradle/gradle-build-action@v2
-
-    # NAYA STEP: Ye missing gradlew file ko khud generate karega
-    - name: Generate Gradle Wrapper
-      run: gradle wrapper
+      with:
+        gradle-version: 8.5
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
